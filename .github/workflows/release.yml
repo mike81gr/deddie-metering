@@ -1,0 +1,41 @@
+name: Create GitHub Release
+permissions:
+  contents: write
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Zip integration folder
+        run: |
+          cd custom_components/deddie_metering
+          zip -r "${GITHUB_WORKSPACE}/deddie_metering.zip" .
+
+      - name: Read Changelog
+        id: changelog
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          echo "Using tag: $TAG_NAME"
+          LOG=$(awk '/^## /{if(x)exit;x=1;next}x' CHANGELOG.md)
+          echo "::set-output name=body::$LOG"
+        shell: bash
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body: ${{ steps.changelog.outputs.body }}
+          files: deddie_metering.zip
+          token: ${{ secrets.GITHUB_TOKEN }}

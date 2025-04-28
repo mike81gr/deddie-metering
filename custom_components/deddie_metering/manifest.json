@@ -1,0 +1,14 @@
+{
+  "domain": "deddie_metering",
+  "name": "ΔΕΔΔΗΕ Τηλεμετρία Καταναλώσεων",
+  "after_dependencies": ["recorder"],
+  "codeowners": ["@mike81gr"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/mike81gr/deddie-metering",
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/mike81gr/deddie-metering/issues",
+  "requirements": [],
+  "version": "1.0.0"
+}

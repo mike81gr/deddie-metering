@@ -1,0 +1,7 @@
+.coverage
+custom_components/deddie_metering/__pycache__
+custom_components/deddie_metering/helpers/__pycache__
+/tests/__pycache__
+/venv311
+.coverage
+pytest.ini

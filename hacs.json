@@ -1,0 +1,9 @@
+{
+  "name": "ΔΕΔΔΗΕ Τηλεμετρία Καταναλώσεων",
+  "content_in_root": false,
+  "render_readme": true,
+  "homeassistant": "2024.10.0",
+  "country": "GR",
+  "zip_release": true,
+  "filename": "deddie_metering.zip"
+}
