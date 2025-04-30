@@ -86,7 +86,7 @@
 You will need:
 - Your **Access Token** from [apps.deddie.gr](https://apps.deddie.gr/mdp/intro.html)
 - Your **Electricity Supply Number** (9 digits)
-- Your **Tax Number (AFM)** (9 digits)
+- Your **Tax Identification Number (TIN)** (9 digits)
 
 Optional:
 - **Start date** (defaults to 1 year ago)

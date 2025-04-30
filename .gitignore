@@ -5,3 +5,4 @@ custom_components/deddie_metering/helpers/__pycache__
 /venv311
 .coverage
 pytest.ini
+/logos
