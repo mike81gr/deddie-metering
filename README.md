@@ -32,6 +32,7 @@
 | [Changelog](#changelog-section) | [Αρχείο Αλλαγών](#changelog-section) |
 | [License](#license-section) | [Άδεια Χρήσης](#license-section) |
 | [Support & Links](#support-section) | [Υποστήριξη & Σύνδεσμοι](#support-section) |
+| [Disclaimer](disclaimer-section) | [Αποποίηση Ευθύνης](#disclaimer-section) |
 
 ---
 
@@ -270,6 +271,23 @@ This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) f
 - Έκδοση token: [apps.deddie.gr](https://apps.deddie.gr/mdp/intro.html)
 - GitHub repo: [deddie\_metering](https://github.com/mike81gr/deddie-metering)
 
+---
+
+<h2 id="disclaimer-section">🛠️ ⚠️ Disclaimer / Αποποίηση Ευθύνης</h2>
+
+This project is not affiliated with HEDNO (Hellenic Electricity Distribution Network Operator) in any way. "Deddie metering" is an unofficial Home Assistant integration, intended solely for personal use by the respective HEDNO customer, using their own credentials as provided through the official website.
+This integration does not bypass any security measures and does not access or collect third-party data. The developer of this project takes no responsibility for:
+- Any changes in HEDNO’s API or platform,
+- The accuracy or availability of the returned data,
+- Any misuse of the integration that violates HEDNO's terms of service.
+- **Use of this integration is entirely at the user's own risk.**
+
+Αυτό το έργο δεν σχετίζεται με κανέναν τρόπο με τον ΔΕΔΔΗΕ (Διαχειριστής Ελληνικού Δικτύου Διανομής Ηλεκτρικής Ενέργειας). Το "Deddie metering" είναι μία ανεπίσημη ενσωμάτωση για το Home Assistant, σχεδιασμένο για χρήση αποκλειστικά από τον ίδιο τον πελάτη της υπηρεσίας, με τα δικά του διαπιστευτήρια, όπως αυτά του παρέχονται από την επίσημη ιστοσελίδα του ΔΕΔΔΗΕ.
+Η ενσωμάτωση δεν παρακάμπτει τεχνικά μέτρα ασφαλείας και δεν χρησιμοποιείται για τη συλλογή δεδομένων τρίτων. Ο δημιουργός του εργαλείου δεν φέρει ευθύνη για:
+- Τυχόν αλλαγές στο API ή τη λειτουργικότητα της πλατφόρμας του ΔΕΔΔΗΕ,
+- Την ακρίβεια των δεδομένων που επιστρέφονται,
+- Οποιαδήποτε χρήση του εργαλείου αντίθετη με τους όρους της ΔΕΔΔΗΕ.
+- **Η χρήση γίνεται με αποκλειστική ευθύνη του τελικού χρήστη.**
 ---
 
 Made with ❤️ by the Greek HA community.
