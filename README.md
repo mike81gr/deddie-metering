@@ -32,7 +32,7 @@
 | [Changelog](#changelog-section) | [Αρχείο Αλλαγών](#changelog-section) |
 | [License](#license-section) | [Άδεια Χρήσης](#license-section) |
 | [Support & Links](#support-section) | [Υποστήριξη & Σύνδεσμοι](#support-section) |
-| [Disclaimer](disclaimer-section) | [Αποποίηση Ευθύνης](#disclaimer-section) |
+| [Disclaimer](#disclaimer-section) | [Αποποίηση Ευθύνης](#disclaimer-section) |
 
 ---
 
@@ -273,7 +273,7 @@ This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) f
 
 ---
 
-<h2 id="disclaimer-section">🛠️ ⚠️ Disclaimer / Αποποίηση Ευθύνης</h2>
+<h2 id="disclaimer-section">⚠️ Disclaimer / Αποποίηση Ευθύνης</h2>
 
 This project is not affiliated with HEDNO (Hellenic Electricity Distribution Network Operator) in any way. "Deddie metering" is an unofficial Home Assistant integration, intended solely for personal use by the respective HEDNO customer, using their own credentials as provided through the official website.
 This integration does not bypass any security measures and does not access or collect third-party data. The developer of this project takes no responsibility for:
