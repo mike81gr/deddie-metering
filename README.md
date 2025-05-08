@@ -1,4 +1,4 @@
-<img src="images/logo.png" alt="DEDDIE Logo" style="width:20%; height:20%; border-radius:50px;" />
+<img src="https://brands.home-assistant.io/custom_integrations/deddie_metering/logo.png)" alt="DEDDIE Logo" style="width:20%; height:20%; border-radius:50px;" />
 
 # HEDNO Consumption Telemetry - ΔΕΔΔΗΕ Τηλεμετρία Καταναλώσεων
 
