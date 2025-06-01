@@ -1,4 +1,4 @@
-<img src="https://raw.githubusercontent.com/mike81gr/deddie-metering/main/images/logo.png" alt="DEDDIE Logo" style="width:20%; height:20%; border-radius:50px;" />
+<img src="brands.home-assistant.io/deddie_metering" alt="DEDDIE Logo" style="width:20%; height:20%; border-radius:50px;" />
 
 # HEDNO Consumption Telemetry - ΔΕΔΔΗΕ Τηλεμετρία Καταναλώσεων
 [![HACS](https://img.shields.io/badge/HACS-Default-orange.svg?logo=HomeAssistantCommunityStore&logoColor=white)](https://hacs.xyz/docs/use/repositories/dashboard/)
