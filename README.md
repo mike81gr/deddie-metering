@@ -18,7 +18,7 @@
 | English | Ελληνικά |
 |---|---|
 | [English Description](#english-section) | [Ελληνική Περιγραφή](#greek-section) |
-| [Installation (via HACS)](#installation_en-section) | [Εγκατάσταση (μέσω HACS)](#installation_el-section) |
+| [Installation (via HACS)](#installation-section) | [Εγκατάσταση (μέσω HACS)](#installation-section) |
 | [Configuration](#configuration_en-section) | [Ρυθμίσεις](#configuration_el-section) |
 | [Options Flow](#options_flow_en-section) | [Ροή Επιλογών](#options_flow-el-section) |
 | [Example configuration](#example_configuration_en-section) | [Παράδειγμα ρυθμίσεων](#example_configuration_el-section) |
@@ -62,27 +62,15 @@
 
 ---
 
-<h2 id="installation_en-section">🔧 Installation (via HACS)</h2>
+<h2 id="installation-section">🔧 Installation / Εγκατάσταση</h2>
 
-1. Add this repository as a **Custom repository** in HACS:
-   - **Repository**: `https://github.com/mike81gr/deddie-metering`
-   - **Type**: `Integration`
-2. Install the integration `deddie_metering`.
-3. Restart Home Assistant.
-4. Go to **Settings > Devices & Services > Integrations** and add **"HEDNO Consumption Telemetry"**.
-
-<h2 id="installation_el-section">🔧 Εγκατάσταση (μέσω HACS)</h2>
-
-1. Προσθέστε αυτό το repository ως **Custom repository** στο HACS:
-   - **Αποθετήριο**: `https://github.com/mike81gr/deddie-metering`
-   - **Τύπος**: `Ενσωμάτωση`
-2. Εγκαταστήστε την ενσωμάτωση `deddie_metering`.
-3. Επανεκκινήστε το Home Assistant.
-4. Μεταβείτε σε **Ρυθμίσεις > Συσκευές & Υπηρεσίες > Ενσωματώσεις** και προσθέστε **"ΔΕΔΔΗΕ Τηλεμετρία Καταναλώσεων"**.
+<a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=mike81gr&repository=deddie-metering&category=integration" target="_blank"><img src="https://my.home-assistant.io/badges/hacs_repository.svg" alt="Open your Home Assistant instance and open a repository inside the Home Assistant Community Store." /></a>
 
 ---
 
 <h2 id="configuration_en-section">⚙️ Configuration</h2>
+
+<a href="https://my.home-assistant.io/redirect/config_flow_start/?domain=deddie_metering" target="_blank"><img src="https://my.home-assistant.io/badges/config_flow_start.svg" alt="Open your Home Assistant instance and start setting up a new integration." /></a>
 
 You will need:
 - Your **Access Token** from [apps.deddie.gr](https://apps.deddie.gr/mdp/intro.html)
@@ -95,6 +83,8 @@ Optional:
 
 <h2 id="configuration_el-section">⚙️ Ρυθμίσεις</h2>
 
+<a href="https://my.home-assistant.io/redirect/config_flow_start/?domain=deddie_metering" target="_blank"><img src="https://my.home-assistant.io/badges/config_flow_start.svg" alt="Open your Home Assistant instance and start setting up a new integration." /></a>
+
 Για τη ρύθμιση απαιτούνται:
 - Το **Κλειδί Πρόσβασης** από [apps.deddie.gr](https://apps.deddie.gr/mdp/intro.html)
 - Ο **Αριθμός Παροχής Ρεύματος** (9 ψηφία)
@@ -102,7 +92,7 @@ Optional:
 
 Προαιρετικά:
 - **Ημερομηνία Έναρξης** (προεπιλογή: 1 χρόνο πίσω)
-- **Συχνότητα ενημέρωσης** (ώρες, μεταξύ 1-24; προεπιλογή: 8)
+- **Συχνότητα ενημέρωσης** (ώρες: μεταξύ 1-24, προεπιλογή: 8)
 
 ---
 
