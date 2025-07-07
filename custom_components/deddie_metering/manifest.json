@@ -6,9 +6,9 @@
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/mike81gr/deddie-metering",
-  "integration_type": "hub",
+  "integration_type": "device",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/mike81gr/deddie-metering/issues",
   "requirements": [],
-  "version": "1.0.0"
+  "version": "1.1.0"
 }

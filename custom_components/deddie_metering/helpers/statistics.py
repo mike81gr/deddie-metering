@@ -6,9 +6,11 @@ from homeassistant.components.recorder.statistics import (
     async_import_statistics,
     StatisticData,
     StatisticMetaData,
+    StatisticMeanType,
 )
 from homeassistant.const import UnitOfEnergy
 from sqlalchemy import text
+
 
 _LOGGER = logging.getLogger("deddie_metering")
 
@@ -19,7 +21,11 @@ async def _connect(instance, engine):
 
 
 async def update_future_statistics(
-    hass, supply, last_meter_dt: datetime, last_total: float
+    hass,
+    supply: str,
+    last_meter_dt: datetime,
+    last_total: float,
+    type_key: str,
 ) -> int:
     """
     Εντοπίζει και ενημερώνει τις "ασυνεπείς" εγγραφές στον πίνακα statistics
@@ -30,7 +36,7 @@ async def update_future_statistics(
     σωστή απεικόνιση στο Energy dashboard του HA (διορθώνει τις αρνητικές τιμές που
     προκαλούνταν μετά από νέα ενημέρωση API).
     """
-    statistic_id = f"sensor.deddie_consumption_{supply}"
+    statistic_id = f"sensor.deddie_{type_key}_{supply}"
 
     # Εσωτερική async συνάρτηση για λήψη των timestamps
     async def get_future_timestamps() -> list:
@@ -87,32 +93,53 @@ async def update_future_statistics(
         StatisticData(start=start, state=last_total, sum=last_total)
         for start in future_starts
     ]
+    # Δυναμικό όνομα βάσει type_key
+    if type_key == "consumption":
+        display_name = f"Κατανάλωση ΔΕΔΔΗΕ {supply}"
+    elif type_key == "production":
+        display_name = f"Παραγωγή ΔΕΔΔΗΕ {supply}"
+    elif type_key == "injection":
+        display_name = f"Έγχυση ΔΕΔΔΗΕ {supply}"
+
     metadata = StatisticMetaData(
         statistic_id=statistic_id,
         source="recorder",
-        name=f"Κατανάλωση ΔΕΔΔΗΕ {supply}",
+        name=display_name,
         unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         has_mean=False,
         has_sum=True,
+        mean_type=StatisticMeanType.NONE,
     )
-    # Επειδή η async_import_statistics είναι blocking,
-    # καλείται μέσα σε async_add_executor_job.
+    # Καλείται η async_import_statistics μέσα σε async_add_executor_job
     await hass.async_add_executor_job(
         async_import_statistics, hass, metadata, statistic_data_list
     )
     return len(statistic_data_list)
 
 
-async def run_update_future_statistics(hass, supply, last_start_dt, total_consumption):
+async def run_update_future_statistics(
+    hass,
+    supply: str,
+    last_start_dt: datetime,
+    total_consumption: float,
+    type_key: str,
+) -> None:
     updated_count = await update_future_statistics(
-        hass, supply, last_start_dt, total_consumption
+        hass, supply, last_start_dt, total_consumption, type_key
     )
     if updated_count > 0:
+        if type_key == "consumption":
+            label = "κατανάλωσης"
+        elif type_key == "production":
+            label = "παραγωγής ενέργειας"
+        elif type_key == "injection":
+            label = "έγχυσης ενέργειας"
         _LOGGER.info(
             "Παροχή %s: Ενημερώθηκαν στη βάση δεδομένων HA %d ασυνεπείς εγγραφές "
-            "του αισθητήρα με νέα συνολική κατανάλωση=%.2f KWh.",
+            "του αισθητήρα %s με νέα συνολική κατανάλωση=%.2f KWh.",
             supply,
             updated_count,
+            label,
             total_consumption,
         )
 
@@ -140,13 +167,15 @@ async def purge_flat_states(
             blocking=True,
         )
         _LOGGER.info(
-            "Παροχή %s: Επιτυχής διαγραφή των flat state εγγραφών του αισθητήρα.",
+            "Παροχή %s: Επιτυχής διαγραφή των flat state εγγραφών του αισθητήρα %s.",
             supply,
+            entity_id,
         )
     except Exception as err:
         _LOGGER.error(
             "Παροχή %s: Σφάλμα κατά τη διαγραφή των flat state εγγραφών "
-            "του αισθητήρα: %s",
+            "του αισθητήρα %s: %s",
             supply,
+            entity_id,
             err,
         )

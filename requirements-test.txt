@@ -1,7 +1,5 @@
-flake8==7.0.0
-mypy==1.9.0
-black==24.4.2
-pytest==8.1.1
-pytest-cov==5.0.0
-pytest-asyncio==0.23.5
-sqlalchemy>=1.4
+pre-commit
+pytest
+pytest-cov
+pytest-asyncio
+homeassistant>=2024.10.0

@@ -2,7 +2,13 @@
   "entity": {
     "sensor": {
       "consumption": {
-        "name": "DEDDIE consumption {supply}"
+        "name": "Consumption {supply}"
+      },
+      "production": {
+        "name": "Production {supply}"
+      },
+      "injection": {
+        "name": "Injection {supply}"
       }
     }
   },
@@ -15,7 +21,7 @@
         "data": {
           "token": "Access Token (API)",
           "supplyNumber": "Electricity Supply Number (9 digits)",
-          "taxNumber": "AFM of the Supply Owner (9 digits)",
+          "taxNumber": "TIN of the Supply Owner (9 digits)",
           "initial_time": "Start Date (default 1 year)",
           "interval_hours": "Update Frequency (hours)"
         }
@@ -27,10 +33,10 @@
       "invalid_tax_number":       "The tax number must be 9 digits.",
       "invalid_interval_hours":   "Update frequency must be between 1 and 24 hours.",
       "invalid_token_or_tax":     "HEDNO (API): The access token or tax number is invalid. Please verify your credentials.",
-      "invalid_supply":           "HEDNO (API): The supply number is invalid. Please verify your supply number.",
-      "invalid_date_format":      "The date must be in the format DD/MM/YYYY (e.g. 01/01/2024).",
-      "invalid_date_not_past":    "The start date must be in the past (DD/MM/YYYY).",
-      "date_in_future":           "The date cannot be in the future (DD/MM/YYYY).",
+      "invalid_supply":           "HEDNO (API): The supply number is invalid. Please verify your supply number or check if you have active telemetry.",
+      "invalid_date_format":      "The date must be in the format DD/MM/YYYY.",
+      "invalid_date_not_past":    "The start date must be in the past.",
+      "date_in_future":           "The date cannot be in the future.",
       "date_not_earlier":         "The new start date must be earlier than the current one.",
       "unknown_error":            "A communication error has occurred. Please try again later."
     }
@@ -56,5 +62,16 @@
       "date_not_earlier":        "The new start date must be earlier than the current one.",
       "unknown_error":           "A communication error has occurred. Please try again later."
     }
+  },
+  "system_health": {
+	"info": {
+		"version":		"Integration version:",
+	    "name":         "Informations about:",
+		"api":			"Availability API:",
+		"frequency":	"Update frequency:",
+		"token":		"Valid token:",
+		"has_pv":		"Has photovoltaic:",
+		"last_update":	"Updated until:"
+	}
   }
 }

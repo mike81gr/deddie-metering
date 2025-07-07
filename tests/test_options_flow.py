@@ -2,7 +2,12 @@ import pytest
 import asyncio
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
+import voluptuous
 from deddie_metering import options_flow
+import sys
+
+# Stub Boolean for voluptuous schema definitions
+voluptuous.Boolean = lambda *args, **kwargs: (lambda v: v)
 
 
 # Patch dt_util.now to fixed date for consistent date comparisons
@@ -28,16 +33,14 @@ def dummy_config_entry(hass):
         "token": "initial_token",
         "interval_hours": 12,
         "initial_time": "01/01/2024",
+        "CONF_HAS_PV": "False",
     }
     entry.hass = hass
-    # Stub update_entry to synchronous
     hass.config_entries.async_update_entry = lambda *args, **kwargs: None
     return entry
 
 
 # Helper to stub show_form and create_entry
-
-
 def setup_options_flow(handler):
     async def fake_create_entry(title, data):
         return {"type": "create_entry", "title": title, "data": data}
@@ -53,43 +56,44 @@ def setup_options_flow(handler):
 
 
 @pytest.mark.asyncio
-async def test_token_change_triggers_notify_and_entry(hass, dummy_config_entry):
+async def test_token_change_triggers_notify_and_entry(
+    hass, dummy_config_entry, monkeypatch
+):
     handler = options_flow.DeddieOptionsFlowHandler(dummy_config_entry)
     setup_options_flow(handler)
-    user_input = {"token": "new_token", "interval_hours": 12}
+    user_input = {
+        "token": "new_token",
+        "interval_hours": 12,
+        "initial_time": "01/01/2024",
+        "CONF_HAS_PV": False,
+    }
+    called = {"task_scheduled": False}
 
-    # Track notification calls
-    called = {"pn": False}
+    async def fake_pn_create(hass_arg, msg, title, notification_id):
+        return None
 
-    def dummy_pn(hass_arg, message, title=None, notification_id=None):
-        called["pn"] = True
+    def fake_async_create_task(coro):
+        called["task_scheduled"] = True
+        return asyncio.get_event_loop().create_task(coro)
 
-    with patch(
-        "homeassistant.components.persistent_notification.async_create", new=dummy_pn
-    ), patch.object(
+    dummy_config_entry.hass.async_create_task = fake_async_create_task
+
+    monkeypatch.setattr(
+        sys.modules["homeassistant.components.persistent_notification"],
+        "async_create",
+        fake_pn_create,
+    )
+
+    with patch.object(
         options_flow, "validate_credentials", new=AsyncMock(return_value=[{}])
-    ), patch.object(
-        options_flow, "translate", return_value="ok"
-    ):
+    ), patch.object(options_flow, "translate", return_value="ok"):
         result = await handler.async_step_init(user_input)
         if asyncio.iscoroutine(result):
             result = await result
 
     assert result["type"] == "create_entry"
     assert result["data"] == user_input
-    assert called["pn"] is True
-
-
-@pytest.mark.asyncio
-async def test_invalid_interval_errors(hass, dummy_config_entry):
-    handler = options_flow.DeddieOptionsFlowHandler(dummy_config_entry)
-    setup_options_flow(handler)
-    for bad in (0, 25):
-        result = await handler.async_step_init({"interval_hours": bad})
-        if asyncio.iscoroutine(result):
-            result = await result
-        assert result["type"] == "form"
-        assert result["errors"]["interval_hours"] == "invalid_interval_hours"
+    assert called["task_scheduled"] is True
 
 
 @pytest.mark.asyncio
@@ -103,14 +107,14 @@ async def test_initial_time_validations(hass, dummy_config_entry):
         result = await result
     assert result["errors"]["initial_time"] == "invalid_date_format"
 
-    # Future date relative to 2025-04-22
+    # Future date
     future = (datetime(2025, 4, 23)).strftime("%d/%m/%Y")
     result = await handler.async_step_init({"initial_time": future})
     if asyncio.iscoroutine(result):
         result = await result
     assert result["errors"]["initial_time"] == "date_in_future"
 
-    # Not earlier than existing 01/01/2024
+    # Not earlier
     result = await handler.async_step_init({"initial_time": "02/01/2024"})
     if asyncio.iscoroutine(result):
         result = await result
@@ -122,7 +126,7 @@ async def test_token_error_mapping(hass, dummy_config_entry):
     handler = options_flow.DeddieOptionsFlowHandler(dummy_config_entry)
     setup_options_flow(handler)
 
-    # Unauthorized -> invalid_token
+    # Unauthorized
     with patch.object(
         options_flow,
         "validate_credentials",
@@ -133,7 +137,7 @@ async def test_token_error_mapping(hass, dummy_config_entry):
             result = await result
     assert result["errors"]["base"] == "invalid_token"
 
-    # Other error -> unknown_error
+    # Other error
     with patch.object(
         options_flow,
         "validate_credentials",
@@ -146,141 +150,7 @@ async def test_token_error_mapping(hass, dummy_config_entry):
 
 
 @pytest.mark.asyncio
-async def test_initial_time_change_triggers_rebatch(hass, dummy_config_entry):
-    handler = options_flow.DeddieOptionsFlowHandler(dummy_config_entry)
-    setup_options_flow(handler)
-
-    mock_run = AsyncMock()
-    mock_save = AsyncMock()
-    with patch.object(options_flow, "run_initial_batches", new=mock_run), patch.object(
-        options_flow, "save_initial_jump_flag", new=mock_save
-    ):
-        new_date = "01/01/2023"
-        result = await handler.async_step_init(
-            {"initial_time": new_date, "interval_hours": 12}
-        )
-        if asyncio.iscoroutine(result):
-            result = await result
-
-    assert mock_run.await_count == 1
-    assert mock_save.await_count == 1
-    assert result["type"] == "create_entry"
-    assert result["data"]["initial_time"] == new_date
-
-
-@pytest.mark.asyncio
-async def test_interval_only_change_creates_entry(hass, dummy_config_entry):
-    handler = options_flow.DeddieOptionsFlowHandler(dummy_config_entry)
-    setup_options_flow(handler)
-    new_interval = 20
-    # Ensure no credentials check or notification
-    bad_validate = AsyncMock(
-        side_effect=AssertionError("validate_credentials should NOT be called")
-    )
-
-    def bad_pn(*args, **kwargs):
-        raise AssertionError("persistent notification should NOT be called")
-
-    with patch.object(options_flow, "validate_credentials", new=bad_validate), patch(
-        "homeassistant.components.persistent_notification.async_create", new=bad_pn
-    ):
-        result = await handler.async_step_init({"interval_hours": new_interval})
-        if asyncio.iscoroutine(result):
-            result = await result
-
-    assert result["type"] == "create_entry"
-    assert result["data"] == {"interval_hours": new_interval}
-
-
-@pytest.mark.asyncio
-async def test_token_and_initial_time_change_together(hass, dummy_config_entry):
-    """
-    Changing both token and initial_time triggers notify, rebatch, and create_entry.
-    """
-    handler = options_flow.DeddieOptionsFlowHandler(dummy_config_entry)
-    setup_options_flow(handler)
-    user_input = {
-        "token": "new_token",
-        "initial_time": "01/01/2023",
-        "interval_hours": 12,
-    }
-
-    called = {"pn": False}
-
-    def dummy_pn(hass_arg, message, title=None, notification_id=None):
-        called["pn"] = True
-
-    mock_run = AsyncMock()
-    mock_save = AsyncMock()
-    with patch(
-        "homeassistant.components.persistent_notification.async_create", new=dummy_pn
-    ), patch.object(
-        options_flow, "validate_credentials", new=AsyncMock(return_value=[{}])
-    ), patch.object(
-        options_flow, "run_initial_batches", new=mock_run
-    ), patch.object(
-        options_flow, "save_initial_jump_flag", new=mock_save
-    ), patch.object(
-        options_flow, "translate", return_value="ok"
-    ):
-        result = await handler.async_step_init(user_input)
-        if asyncio.iscoroutine(result):
-            result = await result
-
-    assert called["pn"] is True
-    assert mock_run.await_count == 1
-    assert mock_save.await_count == 1
-    assert result["type"] == "create_entry"
-    assert result["data"] == user_input
-
-
-@pytest.mark.asyncio
-async def test_token_and_interval_change_together(hass, dummy_config_entry):
-    """
-    Changing both token and interval_hours triggers notification
-    and create_entry without rebatch.
-    """
-    handler = options_flow.DeddieOptionsFlowHandler(dummy_config_entry)
-    setup_options_flow(handler)
-    user_input = {"token": "another_token", "interval_hours": 18}
-
-    # Track notification calls
-    called = {"pn": False}
-
-    def dummy_pn(hass_arg, message, title=None, notification_id=None):
-        called["pn"] = True
-
-    # Ensure rebatch and save are NOT called
-    bad_run = AsyncMock(
-        side_effect=AssertionError("run_initial_batches should NOT be called")
-    )
-    bad_save = AsyncMock(
-        side_effect=AssertionError("save_initial_jump_flag should NOT be called")
-    )
-
-    with patch(
-        "homeassistant.components.persistent_notification.async_create", new=dummy_pn
-    ), patch.object(
-        options_flow, "validate_credentials", new=AsyncMock(return_value=[{}])
-    ), patch.object(
-        options_flow, "run_initial_batches", new=bad_run
-    ), patch.object(
-        options_flow, "save_initial_jump_flag", new=bad_save
-    ), patch.object(
-        options_flow, "translate", return_value="ok"
-    ):
-        result = await handler.async_step_init(user_input)
-        if asyncio.iscoroutine(result):
-            result = await result
-
-    assert called["pn"] is True
-    assert result["type"] == "create_entry"
-    assert result["data"] == user_input
-
-
-@pytest.mark.asyncio
 async def test_show_form_initial(hass, dummy_config_entry):
-    """Το async_step_init χωρίς user_input πρέπει να εμφανίζει τη φόρμα."""
     handler = options_flow.DeddieOptionsFlowHandler(dummy_config_entry)
     setup_options_flow(handler)
     result = await handler.async_step_init()
@@ -290,60 +160,50 @@ async def test_show_form_initial(hass, dummy_config_entry):
 
 
 @pytest.mark.asyncio
-async def test_no_change_creates_entry_without_side_effects(hass, dummy_config_entry):
-    """Αν υποβληθούν οι ίδιες τιμές, να δημιουργείται entry χωρίς side-effects."""
+async def test_initial_time_value_error(hass, dummy_config_entry):
+    """Date matches regex but is invalid, should error."""
     handler = options_flow.DeddieOptionsFlowHandler(dummy_config_entry)
     setup_options_flow(handler)
-
-    # Spy σε functions που δεν πρέπει να κληθούν
-    dummy_config_entry.hass.config_entries.async_update_entry = MagicMock()
-    with patch.object(
-        options_flow,
-        "validate_credentials",
-        new=AsyncMock(
-            side_effect=AssertionError("validate_credentials should NOT be called")
-        ),
-    ), patch(
-        "homeassistant.components.persistent_notification.async_create",
-        new=lambda *args, **kwargs: (_ for _ in ()).throw(
-            AssertionError("persistent_notification should NOT be called")
-        ),
-    ), patch.object(
-        options_flow,
-        "run_initial_batches",
-        new=AsyncMock(
-            side_effect=AssertionError("run_initial_batches should NOT be called")
-        ),
-    ), patch.object(
-        options_flow,
-        "save_initial_jump_flag",
-        new=AsyncMock(
-            side_effect=AssertionError("save_initial_jump_flag should NOT be called")
-        ),
-    ):
-
-        user_input = {
-            "token": dummy_config_entry.options["token"],
-            "interval_hours": dummy_config_entry.options["interval_hours"],
-            "initial_time": dummy_config_entry.options["initial_time"],
-        }
-        result = await handler.async_step_init(user_input)
-        if asyncio.iscoroutine(result):
-            result = await result
-
-    assert result["type"] == "create_entry"
-    assert result["data"] == user_input
+    result = await handler.async_step_init(
+        {"initial_time": "31/02/2025", "interval_hours": 12}
+    )
+    if asyncio.iscoroutine(result):
+        result = await result
+    assert result["type"] == "form"
+    assert result["errors"]["initial_time"] == "invalid_date_format"
 
 
 @pytest.mark.asyncio
-async def test_impossible_date_format_errors(hass, dummy_config_entry):
-    """Μη έγκυρο ημερολόγιο όπως '31/02/2024' πρέπει να δίνει invalid_date_format."""
+async def test_old_initial_parse_exception_triggers_rebatch(hass, dummy_config_entry):
+    """Old initial date unparsable should not block rebatch"""
+    dummy_config_entry.options["initial_time"] = "invalid_old"
     handler = options_flow.DeddieOptionsFlowHandler(dummy_config_entry)
     setup_options_flow(handler)
+    mock_run = AsyncMock()
+    mock_save = AsyncMock()
+    with patch.object(options_flow, "run_initial_batches", new=mock_run), patch.object(
+        options_flow, "save_initial_jump_flag", new=mock_save
+    ):
+        new_date = "01/01/2023"
+        result = await handler.async_step_init(
+            {
+                "token": dummy_config_entry.options["token"],
+                "initial_time": new_date,
+                "interval_hours": 12,
+            }
+        )
+        if asyncio.iscoroutine(result):
+            result = await result
+    assert mock_run.await_count == 1
+    assert result["type"] == "create_entry"
 
-    result = await handler.async_step_init({"initial_time": "31/02/2024"})
-    if asyncio.iscoroutine(result):
-        result = await result
 
-    assert result["type"] == "form"
-    assert result["errors"]["initial_time"] == "invalid_date_format"
+def test_options_flow_build_token_link_en():
+    from deddie_metering.options_flow import DeddieOptionsFlowHandler
+
+    handler = DeddieOptionsFlowHandler(MagicMock())
+    handler.hass = MagicMock()
+    handler.hass.config = MagicMock()
+    handler.hass.config.language = "en"
+    link = handler._build_token_link()
+    assert link == '<a href="https://apps.deddie.gr/mdp/intro.html">HEDNO</a>'

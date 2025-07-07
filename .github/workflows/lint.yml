@@ -12,28 +12,36 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Έλεγχος κώδικα
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Ρύθμιση Python
         uses: actions/setup-python@v5
         with:
-          python-version: 3.11
+          python-version: 3.13
 
-      - name: Install dev dependencies
+      - name: Cache pip
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements-dev.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Εγκατάσταση εξαρτήσεων
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
 
-      - name: Run pre-commit hooks
+      - name: Εκτέλεση pre-commit hooks
         run: |
           pre-commit run --all-files --show-diff-on-failure
 
-      - name: Run flake8
+      - name: Εκτέλεση flake8
         run: |
           flake8 custom_components/deddie_metering --count --select=E9,F63,F7,F82 --show-source --statistics
-          flake8 custom_components/deddie_metering --count --exit-zero --max-complexity=15 --max-line-length=120 --statistics
+          flake8 custom_components/deddie_metering --count --exit-zero --max-complexity=14 --statistics
 
-      - name: Run mypy
+      - name: Εκτέλεση mypy
         run: |
-          mypy custom_components/deddie_metering --ignore-missing-imports
+          mypy custom_components/deddie_metering

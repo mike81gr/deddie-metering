@@ -5,22 +5,35 @@ _LOGGER = logging.getLogger("deddie_metering")
 TRANSLATIONS = {
     "el": {
         "config.success_notification": (
-            "Τα credentials είναι έγκυρα!\n"
-            "Περιμένετε να ολοκληρωθεί η ενημέρωση του αισθητήρα.\n"
-            "Ελέγξτε τα logs για περισσότερες πληροφορίες."
+            "✅ Τα credentials είναι έγκυρα!\n"
+            "🔄 Περιμένετε να ολοκληρωθεί η ενημέρωση της συσκευής.\n"
+            "📄 Ελέγξτε τα logs για περισσότερες πληροφορίες."
         ),
-        "config.success_title": "ΔΕΔΔΗΕ: Παροχή {supply}",
+        "config.success_title": "⚡ ΔΕΔΔΗΕ: Παροχή {supply}",
         "options.token_updated_notification": (
-            "Το νέο κλειδί token είναι έγκυρο! "
-            "Ελέγξτε τα logs για περισσότερες πληροφορίες."
+            "✅ Το νέο κλειδί token είναι έγκυρο! \n"
+            "📄 Ελέγξτε τα logs για περισσότερες πληροφορίες."
         ),
-        "options.token_updated_title": "ΔΕΔΔΗΕ: Παροχή {supply}",
+        "options.token_updated_title": "⚡ ΔΕΔΔΗΕ: Παροχή {supply}",
         "api.token_expired_message": (
-            "Tο token πρόσβασης έχει λήξει. Δεν λαμβάνονται νέα δεδομένα. "
-            "Παρακαλώ ανανεώστε το στην ιστοσελίδα "
+            "❌ Tο token πρόσβασης έχει λήξει. Δεν λαμβάνονται νέα δεδομένα. \n"
+            "🔑 Παρακαλώ ανανεώστε το στην ιστοσελίδα "
             "https://apps.deddie.gr/mdp/intro.html ."
         ),
-        "api.token_expired_title": "ΔΕΔΔΗΕ: Παροχή {supply}",
+        "api.token_expired_title": "⚡ ΔΕΔΔΗΕ: Παροχή {supply}",
+        "init.pv_detected_message": (
+            "☀ Εντοπίστηκαν εγκατεστημένα φωτοβολταϊκά! \n"
+            "🛠 Ενεργοποίηση αισθητήρων Παραγωγής & Έγχυσης.\n"
+            "🔄 Περιμένετε να ολοκληρωθεί η ενημέρωση της συσκευής. \n"
+            "📄 Ελέγξτε τα logs για περισσότερες πληροφορίες."
+        ),
+        "init.pv_detected_title": "⚡ ΔΕΔΔΗΕ: Παροχή {supply}",
+        "coordinator.pv_warning_message": (
+            "❗ Δεν ανιχνεύθηκε παραγωγή από τα "
+            "φωτοβολταϊκά σας εδώ και {days} ημέρες.\n"
+            "🛠 Ελέγξτε τη λειτουργία του συστήματος για τυχόν βλάβη."
+        ),
+        "coordinator.pv_warning_title": "⚠ ΔΕΔΔΗΕ: Παροχή {supply}",
         "sensor.attr_until": "Δεδομένα μέχρι:",
         "sensor.attr_last_fetch": "Τελευταία κλήση στο ΔΕΔΔΗΕ API:",
         "sensor.attr_info": "Info:",
@@ -28,21 +41,32 @@ TRANSLATIONS = {
     },
     "en": {
         "config.success_notification": (
-            "HEDSON (API) Credentials are valid!\n"
-            "Please wait for the sensor update to complete.\n"
-            "Check the logs for more information."
+            "✅ HEDNO (API) Credentials are valid!\n"
+            "⏳ Please wait for the device update to complete.\n"
+            "📄 Check the logs for more information."
         ),
-        "config.success_title": "DEDDIE: Supply {supply}",
+        "config.success_title": "⚡ HEDNO: Supply {supply}",
         "options.token_updated_notification": (
-            "The new token is valid! Check the logs " "for more information."
+            "✅ The new token is valid! \n " "📄 Check the logs for more information."
         ),
-        "options.token_updated_title": "DEDDIE: Supply {supply}",
+        "options.token_updated_title": "⚡ HEDNO: Supply {supply}",
         "api.token_expired_message": (
-            "The access token has expired. No new data is being "
-            "received. Please update it at "
-            "https://apps.deddie.gr/mdp/intro.html."
+            "❌ The access token has expired. No new data is being received. "
+            "🔑 Please update it at https://apps.deddie.gr/mdp/intro.html."
         ),
-        "api.token_expired_title": "DEDDIE: Supply {supply}",
+        "api.token_expired_title": "⚡ HEDNO: Supply {supply}",
+        "init.pv_detected_message": (
+            "☀ Installed photovoltaic panels detected!\n"
+            "🛠 Activating Production & Injection sensors.\n"
+            "🔄 Please wait for the device update to complete.\n"
+            "📄 Check the logs for more information."
+        ),
+        "init.pv_detected_title": "⚡ HEDNO: Supply {supply}",
+        "coordinator.pv_warning_message": (
+            "❗ No PV production detected for {days} days.\n"
+            "🛠 Please check your system for any faults."
+        ),
+        "coordinator.pv_warning_title": "⚠ HEDNO: Supply {supply}",
         "sensor.attr_until": "Data up to:",
         "sensor.attr_last_fetch": "Last API fetch:",
         "sensor.attr_info": "Info:",

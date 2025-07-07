@@ -19,7 +19,7 @@ jobs:
       - name: Run HACS Action
         uses: hacs/action@main
         with:
-          category: "integration"  # Validate this as a HACS integration :contentReference[oaicite:0]{index=0}
+          category: "integration"  # Validate this as a HACS integration
 
   hassfest:
     name: hassfest
@@ -28,4 +28,4 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v4
       - name: Test hassfest
-        uses: home-assistant/actions/hassfest@master  # Run the Home Assistant integration linter :contentReference[oaicite:1]{index=1}
+        uses: home-assistant/actions/hassfest@master  # Run the Home Assistant integration linter

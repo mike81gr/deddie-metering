@@ -6,6 +6,7 @@ from homeassistant.components.recorder.statistics import (
     async_import_statistics,
     StatisticData,
     StatisticMetaData,
+    StatisticMeanType,
 )
 from homeassistant.const import UnitOfEnergy
 from .storage import (
@@ -13,14 +14,20 @@ from .storage import (
     save_last_total,
     save_last_update,
 )
-from .api import get_data_from_api
-from .statistics_helper import run_update_future_statistics
+
+from .statistics import run_update_future_statistics
+from ..api.client import get_data_from_api
+from ..const import ATTR_PRODUCTION, ATTR_INJECTION, ATTR_CONSUMPTION
 
 _LOGGER = logging.getLogger("deddie_metering")
 
 
 async def process_and_insert(
-    hass, records: list, supply: str, total_consumption: float
+    hass,
+    records: list,
+    supply: str,
+    total_consumption: float,
+    type_key: str,
 ) -> tuple:
     """
     Επεξεργάζεται τα records που λήφθηκαν από το API και εισάγει στατιστικές
@@ -62,7 +69,7 @@ async def process_and_insert(
             continue
 
         # Επεξεργασία της πλήρους ημέρας:
-        # Τα records της ημέρας ταξινομούνται (αν χρειάζεται) βάσει της meterDate.
+        # Τα records της ημέρας ταξινομούνται βάσει της meterDate.
         day_records.sort(
             key=lambda r: datetime.strptime(r["meterDate"], "%d/%m/%Y %H:%M")
         )
@@ -91,14 +98,23 @@ async def process_and_insert(
         overall_count += len(day_records)
 
     if all_stats:
-        statistic_id = f"sensor.deddie_consumption_{supply}"
+        # Ορίζουμε statistic_id & display name βάσει class_type
+        statistic_id = f"sensor.deddie_{type_key}_{supply}"
+        if type_key == "consumption":
+            display_name = f"Κατανάλωση ΔΕΔΔΗΕ {supply}"
+        elif type_key == "production":
+            display_name = f"Παραγωγή ΔΕΔΔΗΕ {supply}"
+        elif type_key == "injection":
+            display_name = f"Έγχυση ΔΕΔΔΗΕ {supply}"
+
         metadata = StatisticMetaData(
             statistic_id=statistic_id,
             source="recorder",
-            name=f"Κατανάλωση ΔΕΔΔΗΕ {supply}",
+            name=display_name,
             unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
             has_mean=False,
             has_sum=True,
+            mean_type=StatisticMeanType.NONE,
         )
         # Εισαγωγή/ενημέρωση των στατιστικών εγγραφών μέσω async_import_statistics
         await hass.async_add_executor_job(
@@ -117,31 +133,75 @@ async def process_and_insert(
     return overall_count, total_consumption, last_valid_meter_dt
 
 
-async def run_initial_batches(hass, token, supply, tax, initial_time):
+async def run_initial_batches(
+    hass, token, supply, tax, initial_time, has_pv: bool, inc_con: bool
+):
     """
-    Αρχική λήψη χρησιμοποιώντας κοινή συνάρτηση batch
+    Αρχική λήψη για κατανάλωση, παραγωγή και έγχυση
     """
     end_time = dt_util.now()
-    await batch_fetch(
-        hass, token, supply, tax, initial_time, end_time, "Αρχική λήψη", 60
-    )
+
+    # Batch-fetch για κατανάλωση
+    if inc_con:
+        await batch_fetch(
+            hass,
+            token,
+            supply,
+            tax,
+            initial_time,
+            end_time,
+            "Αρχική λήψη κατανάλωσης",
+            60,
+            ATTR_CONSUMPTION,
+        )
+    # Αν έχει PV, batch-fetch για παραγωγή/έγχυση
+    if has_pv:
+        await batch_fetch(
+            hass,
+            token,
+            supply,
+            tax,
+            initial_time,
+            end_time,
+            "Αρχική λήψη παραγωγής",
+            60,
+            ATTR_PRODUCTION,
+        )
+        await batch_fetch(
+            hass,
+            token,
+            supply,
+            tax,
+            initial_time,
+            end_time,
+            "Αρχική λήψη έγχυσης",
+            60,
+            ATTR_INJECTION,
+        )
 
 
 async def batch_fetch(
-    hass, token, supply, tax, start_dt, end_dt, context_label: str, stats_delay: int
+    hass,
+    token,
+    supply,
+    tax,
+    start_dt,
+    end_dt,
+    context_label: str,
+    stats_delay: int,
+    class_type: str = ATTR_CONSUMPTION,
 ):
     """
-    Εκτελεί λήψη δεδομένων σε batches από start_dt έως end_dt,
-    χρησιμοποιώντας batching ώστε κάθε API call να καλύπτει έως 365 ημέρες
-    (περιορισμός από API ΔΕΔΔΗΕ).
+    Εκτελεί λήψη δεδομένων σε batches από start_dt έως end_dt, ώστε
+    κάθε API call να καλύπτει έως 365 ημέρες (περιορισμός από API ΔΕΔΔΗΕ).
     Η διαδικασία αυτή:
-      - Ενημερώνει το συσσωρευμένο σύνολο κατανάλωσης (total_consumption).
+      - Ενημερώνει τα συσσωρευμένα σύνολα (total_consumption/production/injection).
       - Την τελευταία έγκυρη ημερομηνία (last_update) μέσω της
         process_and_insert.
       - Αποθηκεύει τα αποτελέσματα στο persistent store (μέσω save_last_total
         και save_last_update).
       - Χρησιμοποιεί context_label για logging και stats_delay για deferred
-        future stats update
+        future stats update.
     """
     _LOGGER.info(
         "Παροχή %s: %s από %s έως %s.",
@@ -151,20 +211,25 @@ async def batch_fetch(
         end_dt.strftime("%d/%m/%Y"),
     )
     current_start = start_dt
-    total_consumption = await load_last_total(hass, supply) or 0.0
+    total_consumption = await load_last_total(hass, supply, key=class_type) or 0.0
     # Μεταβλητές για αποθήκευση της πρώτης και της τελευταίας έγκυρης
     # meterDate που επεξεργάστηκε επιτυχώς.
     first_meter_dt = None
     last_meter_dt = None
     total_count = 0
-
+    if class_type == ATTR_CONSUMPTION:
+        type_key = "consumption"
+    elif class_type == ATTR_PRODUCTION:
+        type_key = "production"
+    elif class_type == ATTR_INJECTION:
+        type_key = "injection"
     while current_start < end_dt:
         # Xρησιμοποιούμε timedelta(days=364) ώστε το effective διάστημα
         # (με το -1 day στο fromDate) να είναι 365 ημέρες.
         batch_end = min(current_start + timedelta(days=364), end_dt)
         try:
             records = await get_data_from_api(
-                hass, token, supply, tax, current_start, batch_end
+                hass, token, supply, tax, current_start, batch_end, class_type
             )
             if records:
                 if first_meter_dt is None:
@@ -191,7 +256,7 @@ async def batch_fetch(
                 # Χρησιμοποιούμε το αποτέλεσμα της process_and_insert για να
                 # πάρουμε την τελευταία έγκυρη meterDate
                 count, total_consumption, last_valid = await process_and_insert(
-                    hass, records, supply, total_consumption
+                    hass, records, supply, total_consumption, type_key
                 )
                 total_count += count
                 if last_valid:
@@ -218,8 +283,8 @@ async def batch_fetch(
     # Αν βρέθηκαν έγκυρες εγγραφές, ενημερώνουμε τα last_update
     # και last_total με τις τελευταίες έγκυρες τιμές.
     if last_meter_dt is not None:
-        await save_last_update(hass, supply, last_meter_dt)
-        await save_last_total(hass, supply, total_consumption)
+        await save_last_update(hass, supply, last_meter_dt, key=class_type)
+        await save_last_total(hass, supply, total_consumption, key=class_type)
         _LOGGER.info(
             "Παροχή %s: <%s> Αποθηκεύτηκαν επιτυχώς %d εγγραφές "
             "για το χρονικό διάστημα από %s έως %s.",
@@ -240,7 +305,7 @@ async def batch_fetch(
                 stats_delay,
                 lambda: hass.async_create_task(
                     run_update_future_statistics(
-                        hass, supply, last_start_dt, total_consumption
+                        hass, supply, last_start_dt, total_consumption, type_key
                     )
                 ),
             )
@@ -254,17 +319,33 @@ async def batch_fetch(
 
 
 async def fetch_since(
-    hass, token, supply, tax, from_dt, to_dt, context_label: str, stats_delay: int
+    hass,
+    token,
+    supply,
+    tax,
+    from_dt,
+    to_dt,
+    context_label: str,
+    stats_delay: int,
+    class_type: str = ATTR_CONSUMPTION,
 ):
     """
-    Single-fetch helper: κατεβάζει μία φορά δεδομένα από from_dt έως to_dt,
+    Single-fetch: κατεβάζει μία φορά δεδομένα από from_dt έως to_dt,
     κάνει process_and_insert, αποθηκεύει last_update/last_total και
     προγραμματίζει future stats.
     """
     # Μεταβλητή για αποθήκευση της πρώτης έγκυρης meterDate που επεξεργάστηκε επιτυχώς.
     first_meter_dt = None
+    if class_type == ATTR_CONSUMPTION:
+        type_key = "consumption"
+    elif class_type == ATTR_PRODUCTION:
+        type_key = "production"
+    elif class_type == ATTR_INJECTION:
+        type_key = "injection"
     try:
-        records = await get_data_from_api(hass, token, supply, tax, from_dt, to_dt)
+        records = await get_data_from_api(
+            hass, token, supply, tax, from_dt, to_dt, class_type
+        )
         if records:
             if first_meter_dt is None:
                 try:
@@ -287,41 +368,46 @@ async def fetch_since(
                         e,
                     )
             # Ξεκινάμε από την αποθηκευμένη συνολική κατανάλωση
-            total_consumption = await load_last_total(hass, supply) or 0.0
+            total_consumption = (
+                await load_last_total(hass, supply, key=class_type) or 0.0
+            )
             count, total_consumption, last_valid = await process_and_insert(
-                hass, records, supply, total_consumption
+                hass, records, supply, total_consumption, type_key
             )
             # Αν βρέθηκαν έγκυρες εγγραφές, ενημερώνουμε τα last_update
             # και last_total με τις τελευταίες έγκυρες τιμές.
-            if last_valid:
-                await save_last_update(hass, supply, last_valid)
-                await save_last_total(hass, supply, total_consumption)
-                _LOGGER.info(
-                    "Παροχή %s: <%s> Αποθηκεύτηκαν επιτυχώς %d εγγραφές "
-                    "για το χρονικό διάστημα από %s έως %s.",
-                    supply,
-                    context_label,
-                    count,
-                    (
-                        first_meter_dt.strftime("%d/%m/%Y")
-                        if first_meter_dt
-                        else "Unknown"
-                    ),
-                    (last_valid - timedelta(days=1)).strftime("%d/%m/%Y"),
-                )
-
-                # Κλήση run_update_future_statistics αν υπάρχουν ασυνεπείς
-                # εγγραφές στο statistics με καθυστέρηση 60΄΄ για ασφαλή πρόσβαση
-                # στη βάση δεδομένων
-                if count > 0:
-                    # Χρησιμοποιούμε το start_dt της τελευταίας εγγραφής,
-                    # δηλαδή, last_meter_dt - 1 ώρα
+            if count > 0:
+                if last_valid:
+                    await save_last_update(hass, supply, last_valid, key=class_type)
+                    await save_last_total(
+                        hass, supply, total_consumption, key=class_type
+                    )
+                    _LOGGER.info(
+                        "Παροχή %s: <%s> Αποθηκεύτηκαν επιτυχώς %d εγγραφές "
+                        "για το χρονικό διάστημα από %s έως %s.",
+                        supply,
+                        context_label,
+                        count,
+                        (
+                            first_meter_dt.strftime("%d/%m/%Y")
+                            if first_meter_dt
+                            else "Unknown"
+                        ),
+                        (last_valid - timedelta(days=1)).strftime("%d/%m/%Y"),
+                    )
+                    # Κλήση run_update_future_statistics αν υπάρχουν ασυνεπείς
+                    # εγγραφές στο statistics με καθυστέρηση 60΄΄ για ασφαλή πρόσβαση
+                    # στη βάση δεδομένων
                     last_start_dt = last_valid - timedelta(hours=1)
                     hass.loop.call_later(
                         stats_delay,
                         lambda: hass.async_create_task(
                             run_update_future_statistics(
-                                hass, supply, last_start_dt, total_consumption
+                                hass,
+                                supply,
+                                last_start_dt,
+                                total_consumption,
+                                type_key,
                             )
                         ),
                     )

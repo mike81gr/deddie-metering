@@ -18,34 +18,39 @@ deddie_metering/
 │   └── deddie_metering/
 │       ├── __init__.py
 │       ├── manifest.json
-│       ├── icon.png
 │       ├── const.py
 │       ├── config_flow.py
 │       ├── options_flow.py
 │       ├── coordinator.py
 │       ├── sensor.py
-│       ├── storage.py
-│       ├── utils.py
-│       ├── api.py
-│       ├── statistics_helper.py
 │       ├── strings.json
+│       ├── system_health.py
+│       ├── api/
+│       │	├── client.py
+│       │	└── detection.py
+│       │
 │       ├── helpers/
-│       │   └── translate.py
+│       │	├── statistics.py
+│       │	├── storage.py
+│       │	├── translate.py
+│       │   └── utils.py
+│       │
 │       └── translations/
 │           ├── el.json
 │           └── en.json
 │
 ├── tests/
 │   ├── conftest.py
-│   ├── test_api.py
+│   ├── test_client.py
 │   ├── test_config_flow.py
 │   ├── test_coordinator.py
-│   ├── test_flow_helpers.py
+│   ├── test_detection.py
 │   ├── test_init.py
 │   ├── test_options_flow.py
 │   ├── test_sensor.py
-│   ├── test_statistics_helper.py
+│   ├── test_statistics.py
 │   ├── test_storage.py
+│   ├── test_system_health.py
 │   ├── test_translate.py
 │   └── test_utils.py
 │
@@ -54,10 +59,11 @@ deddie_metering/
 │   ├── configuration_en.png
 │   ├── dashboard-daily.png
 │   ├── dashboard-monthly.png
+│   ├── dashboard-new-sensors.png
 │   ├── entity-details.png
 │   ├── statistics-history.png
-│   └── logo.png
-│   ├── icon.png
+│   ├── system-health.png
+│   └── UI-history-stats.png
 │
 └── .github/
     └── workflows/
