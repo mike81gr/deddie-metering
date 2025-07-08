@@ -28,7 +28,7 @@ jobs:
         run: |
           echo "Using tag: $TAG_NAME"
           LOG=$(awk '/^## /{if(x)exit;x=1;next}x' CHANGELOG.md)
-          echo "::set-output name=body::$LOG"
+          echo "body=$LOG" >> "$GITHUB_OUTPUT"
         shell: bash
 
       - name: Create GitHub Release
