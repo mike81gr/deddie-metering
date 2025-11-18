@@ -9,6 +9,7 @@ from homeassistant.components.recorder.statistics import (
     StatisticMeanType,
 )
 from homeassistant.const import UnitOfEnergy
+from homeassistant.components.sensor import SensorDeviceClass
 from .storage import (
     load_last_total,
     save_last_total,
@@ -18,6 +19,7 @@ from .storage import (
 from .statistics import run_update_future_statistics
 from ..api.client import get_data_from_api
 from ..const import ATTR_PRODUCTION, ATTR_INJECTION, ATTR_CONSUMPTION
+
 
 _LOGGER = logging.getLogger("deddie_metering")
 
@@ -115,6 +117,7 @@ async def process_and_insert(
             has_mean=False,
             has_sum=True,
             mean_type=StatisticMeanType.NONE,
+            unit_class=SensorDeviceClass.ENERGY
         )
         # Εισαγωγή/ενημέρωση των στατιστικών εγγραφών μέσω async_import_statistics
         await hass.async_add_executor_job(
