@@ -11,5 +11,5 @@
   "issue_tracker": "https://github.com/mike81gr/deddie-metering/issues",
   "requirements": [],
   "version": "2.0.0",
-  "homeassistant": "2025.11.0"
+  "homeassistant": "2025.11"
 }
