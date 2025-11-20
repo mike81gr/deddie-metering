@@ -144,7 +144,7 @@ Persistent notifications will inform you of successful token renewal or any erro
 
 | **Integration Version** |  **HA Compatibility**  |
 |---------------------|--------------------|
-|       **1.1.0**         | **2025.11 or older**   |
+|       **1.1.0**         | **2025.10 or older**   |
 |       **2.0.0**         | **2025.11 or newer**   |
 
 <h2 id="compatibility_el-section">⚖️ Συμβατότητα & Απαιτήσεις</h2>
@@ -154,7 +154,7 @@ Persistent notifications will inform you of successful token renewal or any erro
 
 | **Έκδοση Ενσωμάτωσης** | **Συμβατότητα Έκδοσης HA** |
 |--------------------|------------------------|
-|       **1.1.0**        | **2025.11 ή παλαιότερη**   |
+|       **1.1.0**        | **2025.10 ή παλαιότερη**   |
 |       **2.0.0**        | **2025.11 ή νεότερη**      |
 
 ---
