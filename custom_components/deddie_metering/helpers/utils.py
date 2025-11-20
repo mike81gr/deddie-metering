@@ -117,7 +117,7 @@ async def process_and_insert(
             has_mean=False,
             has_sum=True,
             mean_type=StatisticMeanType.NONE,
-            unit_class=SensorDeviceClass.ENERGY
+            unit_class=SensorDeviceClass.ENERGY,
         )
         # Εισαγωγή/ενημέρωση των στατιστικών εγγραφών μέσω async_import_statistics
         await hass.async_add_executor_job(
