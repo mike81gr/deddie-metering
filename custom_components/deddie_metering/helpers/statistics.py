@@ -11,6 +11,7 @@ from homeassistant.components.recorder.statistics import (
 from homeassistant.const import UnitOfEnergy
 from sqlalchemy import text
 
+from homeassistant.components.sensor import SensorDeviceClass
 
 _LOGGER = logging.getLogger("deddie_metering")
 
@@ -109,6 +110,7 @@ async def update_future_statistics(
         has_mean=False,
         has_sum=True,
         mean_type=StatisticMeanType.NONE,
+        unit_class=SensorDeviceClass.ENERGY,
     )
     # Καλείται η async_import_statistics μέσα σε async_add_executor_job
     await hass.async_add_executor_job(

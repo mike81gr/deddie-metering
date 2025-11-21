@@ -27,8 +27,12 @@ jobs:
           TAG_NAME: ${{ github.ref_name }}
         run: |
           echo "Using tag: $TAG_NAME"
+          # extract the first "## " section after the header
           LOG=$(awk '/^## /{if(x)exit;x=1;next}x' CHANGELOG.md)
-          echo "body=$LOG" >> "$GITHUB_OUTPUT"
+          # write multiline output safely to the GITHUB_OUTPUT file using the EOF delimiter
+          echo "body<<EOF" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$LOG" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
         shell: bash
 
       - name: Create GitHub Release

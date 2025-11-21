@@ -56,3 +56,14 @@
 - Προσθήκη νέου αρχείου κώδικα για εμφάνιση στην **Υγεία Συστήματος** του Home Assistant.
 - Κάλυψη παραγωγικού κώδικα με δοκιμές στο **100%**.
 - Ανανέωση αρχείου README.md μετά την προσθήκη της ενσωμάτωσης στον κατάλογο του HACS store.
+
+
+## v2.0.0 - Fixes for HA 2025.11 (2025-11-20)
+
+- Reformation of StatisticMetaData, because requires unit_class to be declared in order to be valid for async_import_statistics.
+- Contributor: [Kehayeah](https://github.com/Kehayeah)
+
+## v2.0.0 - Διορθώσεις για την έκδοση ΗΑ 2025.11 (20-11-2025)
+
+- Αναμόρφωση της StatisticMetaData, επειδή απαιτεί τη δήλωση της unit_class για να είναι έγκυρη για την async_import_statistics.
+- Συνεισφέρων: [Kehayeah](https://github.com/Kehayeah)

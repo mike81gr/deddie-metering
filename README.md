@@ -142,10 +142,20 @@ Persistent notifications will inform you of successful token renewal or any erro
 - Home Assistant Core **2024.10** or newer
 - Telemetry feature enabled on your electricity meter
 
+| **Integration Version** |  **HA Compatibility**  |
+|---------------------|--------------------|
+|       **1.1.0**         | **2025.10 or older**   |
+|       **2.0.0**         | **2025.11 or newer**   |
+
 <h2 id="compatibility_el-section">⚖️ Συμβατότητα & Απαιτήσεις</h2>
 
  - Home Assistant Core **2024.10** ή νεότερη έκδοση
  - Ενεργοποιημένη υπηρεσία τηλεμετρίας στον μετρητή σας
+
+| **Έκδοση Ενσωμάτωσης** | **Συμβατότητα Έκδοσης HA** |
+|--------------------|------------------------|
+|       **1.1.0**        | **2025.10 ή παλαιότερη**   |
+|       **2.0.0**        | **2025.11 ή νεότερη**      |
 
 ---
 
