@@ -16,7 +16,7 @@ from .const import (
 )
 from .coordinator import DeddieDataUpdateCoordinator
 from .helpers.translate import translate
-from .helpers.utils import run_initial_batches
+from .helpers.utils import async_ensure_external_statistics, run_initial_batches
 from .helpers.storage import save_initial_jump_flag
 from .api.client import validate_credentials
 
@@ -186,6 +186,11 @@ async def async_setup_entry(hass, entry):
                 await save_initial_jump_flag(hass, supply, True, key=ATTR_PRODUCTION)
                 await save_initial_jump_flag(hass, supply, True, key=ATTR_INJECTION)
             choose_step_flag = "C"
+
+    # Γέμισμα του εξωτερικού statistic όταν λείπει (π.χ. μετά την αναβάθμιση)
+    await async_ensure_external_statistics(
+        hass, token, supply, tax, initial_time, has_pv
+    )
 
     # Δημιουργία Coordinator
     update_interval = timedelta(hours=interval)

@@ -1,3 +1,4 @@
+from datetime import datetime
 import sys
 import types
 import pytest
@@ -181,6 +182,8 @@ async def test_async_setup_entry_migrated_with_pv(monkeypatch, hass):
     hass.config_entries.async_update_entry = MagicMock()
 
     # 5. Εκτέλεση
+    ensure = AsyncMock()
+    monkeypatch.setattr(deddie_metering, "async_ensure_external_statistics", ensure)
     result = await async_setup_entry(hass, entry)
 
     # 6. Assertions
@@ -263,6 +266,8 @@ async def test_async_setup_entry_fresh_setup_with_pv(monkeypatch, hass):
     hass.config_entries.async_update_entry = MagicMock()
 
     # Εκτέλεση setup
+    ensure = AsyncMock()
+    monkeypatch.setattr(deddie_metering, "async_ensure_external_statistics", ensure)
     result = await async_setup_entry(hass, entry)
 
     # Assertions
@@ -320,6 +325,9 @@ async def test_async_setup_entry_fresh_not_first_with_pv(monkeypatch, hass):
     # Dummy coordinator to capture skip_initial_refresh and has_pv
     coord_args = {}
 
+    ensure = AsyncMock()
+    monkeypatch.setattr(deddie_metering, "async_ensure_external_statistics", ensure)
+
     class DummyCoord:
         def __init__(
             self,
@@ -332,6 +340,7 @@ async def test_async_setup_entry_fresh_not_first_with_pv(monkeypatch, hass):
             has_pv,
             entry,
         ):
+            coord_args["ensure_awaits_at_creation"] = ensure.await_count
             coord_args["choose_step_flag"] = "B"
             coord_args["has_pv"] = has_pv
 
@@ -356,6 +365,12 @@ async def test_async_setup_entry_fresh_not_first_with_pv(monkeypatch, hass):
     # Coordinator με choose_step_flag="B" και has_pv=True
     assert coord_args["choose_step_flag"] == "B"
     assert coord_args["has_pv"] is True
+    # Backfill check ran once, before the coordinator was created
+    assert coord_args["ensure_awaits_at_creation"] == 1
+    args = ensure.await_args.args
+    assert args[1:4] == ("tok2", "SUP2", "TAX2")
+    assert args[4] == datetime(2021, 2, 2)  # dt_util.as_local is identity in tests
+    assert args[5] is True
 
 
 @pytest.mark.asyncio

@@ -6,6 +6,7 @@ from .external_statistics import (
     StatisticData,
     async_add_external_statistics,
     async_get_base_sum,
+    async_has_rows,
     async_warn_if_rows_after,
     external_metadata,
     external_statistic_id,
@@ -375,4 +376,45 @@ async def fetch_since(
             "Παροχή %s: <%s> Σφάλμα κατά τη λήψη δεδομένων από ΔΕΔΔΗΕ (API).",
             supply,
             context_label,
+        )
+
+
+_BACKFILL_CHECK_DAYS = 7
+
+
+async def async_ensure_external_statistics(
+    hass, token, supply, tax, initial_time, has_pv: bool
+):
+    """
+    Γεμίζει το εξωτερικό statistic από το initial_time όταν η πρώτη εβδομάδα
+    του είναι κενή (πρώτη εκκίνηση μετά την αναβάθμιση ή ημιτελής
+    προηγούμενη λήψη). Η επανεισαγωγή είναι ασφαλής (rebase).
+    """
+    types = [(ATTR_CONSUMPTION, "consumption")]
+    if has_pv:
+        types += [(ATTR_PRODUCTION, "production"), (ATTR_INJECTION, "injection")]
+    for class_type, type_key in types:
+        statistic_id = external_statistic_id(type_key, supply)
+        if await async_has_rows(
+            hass,
+            statistic_id,
+            initial_time,
+            initial_time + timedelta(days=_BACKFILL_CHECK_DAYS),
+        ):
+            continue
+        _LOGGER.info(
+            "Παροχή %s: Το %s δεν έχει δεδομένα από %s. Έναρξη πλήρους λήψης.",
+            supply,
+            statistic_id,
+            initial_time.strftime("%d/%m/%Y"),
+        )
+        await batch_fetch(
+            hass,
+            token,
+            supply,
+            tax,
+            initial_time,
+            dt_util.now(),
+            "Μετάβαση σε εξωτερικά στατιστικά",
+            class_type,
         )

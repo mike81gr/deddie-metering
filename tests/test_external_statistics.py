@@ -1,10 +1,11 @@
 import logging
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 import deddie_metering.helpers.external_statistics as ext
+from deddie_metering.const import ATTR_CONSUMPTION, ATTR_INJECTION, ATTR_PRODUCTION
 import deddie_metering.helpers.utils as utils
 from deddie_metering.helpers.utils import process_and_insert
 
@@ -173,3 +174,50 @@ async def test_has_rows(recorder):
     assert not await ext.async_has_rows(
         MagicMock(), STAT_ID, datetime(2026, 2, 1), datetime(2026, 2, 8)
     )
+
+
+@pytest.mark.asyncio
+async def test_backfill_runs_when_statistic_empty(monkeypatch, recorder):
+    bf = AsyncMock()
+    monkeypatch.setattr(utils, "batch_fetch", bf)
+    start = datetime(2025, 4, 15)
+    await utils.async_ensure_external_statistics(
+        MagicMock(), "tok", SUPPLY, "tax", start, has_pv=False
+    )
+    bf.assert_awaited_once()
+    args = bf.await_args.args
+    assert args[4] == start and args[-1] == ATTR_CONSUMPTION
+
+
+@pytest.mark.asyncio
+async def test_backfill_runs_again_when_first_week_empty(monkeypatch, recorder):
+    """A failed earlier backfill left only recent rows: refill from initial_time."""
+    recorder.rows[datetime(2026, 11, 1)] = 10.0
+    bf = AsyncMock()
+    monkeypatch.setattr(utils, "batch_fetch", bf)
+    await utils.async_ensure_external_statistics(
+        MagicMock(), "tok", SUPPLY, "tax", datetime(2025, 4, 15), has_pv=False
+    )
+    bf.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_backfill_skipped_when_first_week_present(monkeypatch, recorder):
+    recorder.rows[datetime(2025, 4, 16)] = 1.0
+    bf = AsyncMock()
+    monkeypatch.setattr(utils, "batch_fetch", bf)
+    await utils.async_ensure_external_statistics(
+        MagicMock(), "tok", SUPPLY, "tax", datetime(2025, 4, 15), has_pv=False
+    )
+    bf.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_backfill_covers_pv_types(monkeypatch, recorder):
+    bf = AsyncMock()
+    monkeypatch.setattr(utils, "batch_fetch", bf)
+    await utils.async_ensure_external_statistics(
+        MagicMock(), "tok", SUPPLY, "tax", datetime(2025, 4, 15), has_pv=True
+    )
+    types = [c.args[-1] for c in bf.await_args_list]
+    assert types == [ATTR_CONSUMPTION, ATTR_PRODUCTION, ATTR_INJECTION]
