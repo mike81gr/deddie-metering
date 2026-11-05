@@ -350,9 +350,11 @@ async def test_process_and_insert_production_and_injection(monkeypatch, fake_has
 
     monkeypatch.setattr(
         utils,
-        "async_import_statistics",
-        lambda _h, m, dl: got.append((m.statistic_id, m.name, len(dl))),
+        "async_add_external_statistics",
+        lambda _h, m, dl: got.append((m["statistic_id"], m["name"], len(dl))),
     )
+    monkeypatch.setattr(utils, "async_get_base_sum", AsyncMock(return_value=0.0))
+    monkeypatch.setattr(utils, "async_warn_if_rows_after", AsyncMock())
 
     # Production branch (no ‘production’ data in these records)
     count_prod, total_prod, last_prod = await process_and_insert(
@@ -406,10 +408,12 @@ async def test_process_and_insert_bad_consumption_inner(monkeypatch, fake_hass):
     ]
     captured = []
 
-    async def dummy_import(_h, metadata, data_list):
+    def dummy_import(_h, metadata, data_list):
         captured.extend(data_list)
 
-    monkeypatch.setattr(utils, "async_import_statistics", dummy_import)
+    monkeypatch.setattr(utils, "async_add_external_statistics", dummy_import)
+    monkeypatch.setattr(utils, "async_get_base_sum", AsyncMock(return_value=0.0))
+    monkeypatch.setattr(utils, "async_warn_if_rows_after", AsyncMock())
     overall_count, total_consumption, last_valid = await process_and_insert(
         fake_hass, records, "SUPPLY", 0.0, "consumption"
     )
@@ -509,25 +513,25 @@ async def test_process_and_insert_display_names(monkeypatch, fake_hass):
 
     captured = []
 
-    # Override το StatisticMetaData με dummy version
-    class DummyMeta:
-        def __init__(self, statistic_id, name, **kwargs):
-            self.statistic_id = statistic_id
-            self.name = name
-            self.unit_of_measurement = kwargs.get("unit_of_measurement")
-            self.has_mean = kwargs.get("has_mean", False)
-            self.has_sum = kwargs.get("has_sum", True)
-
     monkeypatch.setattr(
         utils,
-        "StatisticMetaData",
-        DummyMeta,
+        "external_metadata",
+        lambda t, s: {
+            "statistic_id": f"deddie_metering:{t}_{s}",
+            "name": {
+                "consumption": f"Κατανάλωση ΔΕΔΔΗΕ {s}",
+                "production": f"Παραγωγή ΔΕΔΔΗΕ {s}",
+                "injection": f"Έγχυση ΔΕΔΔΗΕ {s}",
+            }[t],
+        },
     )
 
-    async def dummy_import_statistics(hass, metadata, stats):
-        captured.append((metadata.statistic_id, metadata.name, len(stats)))
+    def dummy_import_statistics(hass, metadata, stats):
+        captured.append((metadata["statistic_id"], metadata["name"], len(stats)))
 
-    monkeypatch.setattr(utils, "async_import_statistics", dummy_import_statistics)
+    monkeypatch.setattr(utils, "async_add_external_statistics", dummy_import_statistics)
+    monkeypatch.setattr(utils, "async_get_base_sum", AsyncMock(return_value=0.0))
+    monkeypatch.setattr(utils, "async_warn_if_rows_after", AsyncMock())
 
     # Κατανάλωση
     await process_and_insert(fake_hass, records, supply, 0.0, "consumption")

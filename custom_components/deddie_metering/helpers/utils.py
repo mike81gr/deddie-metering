@@ -2,14 +2,14 @@ import logging
 from collections import defaultdict
 from datetime import datetime, timedelta
 import homeassistant.util.dt as dt_util
-from homeassistant.components.recorder.statistics import (
-    async_import_statistics,
+from .external_statistics import (
     StatisticData,
-    StatisticMetaData,
-    StatisticMeanType,
+    async_add_external_statistics,
+    async_get_base_sum,
+    async_warn_if_rows_after,
+    external_metadata,
+    external_statistic_id,
 )
-from homeassistant.const import UnitOfEnergy
-from homeassistant.components.sensor import SensorDeviceClass
 from .storage import (
     load_last_total,
     save_last_total,
@@ -32,17 +32,17 @@ async def process_and_insert(
     type_key: str,
 ) -> tuple:
     """
-    Επεξεργάζεται τα records που λήφθηκαν από το API και εισάγει στατιστικές
-    εγγραφές, συνενώνοντας (merging) τις πλήρεις ημέρες (δηλαδή, ημέρες με 24
-    έγκυρα records που περιέχουν το πεδίο 'consumption'). Διενεργεί τον έλεγχο
-    ότι, για κάθε ημέρα, υπάρχουν 24 έγκυρες εγγραφές. Αν κάποια ημέρα είναι
-    ελλιπής, απορρίπτεται ολόκληρη. Δημιουργεί μια ενιαία λίστα αντικειμένων
-    StatisticData και καλεί async_import_statistics μία φορά.
+    Επεξεργάζεται τα records του API και γράφει ωριαίες εγγραφές στο εξωτερικό
+    statistic `deddie_metering:<type_key>_<supply>`. Δεκτές είναι μόνο πλήρεις
+    ημέρες (24 έγκυρα records). Το άθροισμα ξεκινά από το sum της εγγραφής
+    αμέσως πριν από την πρώτη εισερχόμενη ώρα (rebase), άρα η επανεισαγωγή
+    δίνει ίδια αποτελέσματα. Το `total_consumption` επιστρέφεται αμετάβλητο
+    μόνο όταν η ανάγνωση της βάσης αποτύχει (τότε δεν γράφεται τίποτα).
     """
     skipped_count = 0
     overall_count = 0
     last_valid_meter_dt = None
-    all_stats = []
+    hourly: list = []
 
     # Ομαδοποίηση των records, λαμβάνοντας υπόψη το offset -1 ώρα για το start_dt.
     records_by_day = defaultdict(list)
@@ -83,12 +83,7 @@ async def process_and_insert(
                 last_valid_meter_dt = meter_dt
                 # Υπολογισμός του start_dt με offset -1 ώρα.
                 start_dt = meter_dt - timedelta(hours=1)
-                consumption = float(rec["consumption"])
-                total_consumption += consumption
-                stat = StatisticData(
-                    start=start_dt, state=total_consumption, sum=total_consumption
-                )
-                all_stats.append(stat)
+                hourly.append((start_dt, float(rec["consumption"])))
             except Exception as e:
                 _LOGGER.info(
                     "Παροχή %s: Παράβλεψη εγγραφής για την ημέρα %s λόγω σφάλματος: %s",
@@ -99,30 +94,26 @@ async def process_and_insert(
                 skipped_count += 1
         overall_count += len(day_records)
 
-    if all_stats:
-        # Ορίζουμε statistic_id & display name βάσει class_type
-        statistic_id = f"sensor.deddie_{type_key}_{supply}"
-        if type_key == "consumption":
-            display_name = f"Κατανάλωση ΔΕΔΔΗΕ {supply}"
-        elif type_key == "production":
-            display_name = f"Παραγωγή ΔΕΔΔΗΕ {supply}"
-        elif type_key == "injection":
-            display_name = f"Έγχυση ΔΕΔΔΗΕ {supply}"
-
-        metadata = StatisticMetaData(
-            statistic_id=statistic_id,
-            source="recorder",
-            name=display_name,
-            unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-            has_mean=False,
-            has_sum=True,
-            mean_type=StatisticMeanType.NONE,
-            unit_class=SensorDeviceClass.ENERGY,
-        )
-        # Εισαγωγή/ενημέρωση των στατιστικών εγγραφών μέσω async_import_statistics
-        await hass.async_add_executor_job(
-            async_import_statistics, hass, metadata, all_stats
-        )
+    if hourly:
+        hourly.sort(key=lambda item: item[0])
+        statistic_id = external_statistic_id(type_key, supply)
+        try:
+            running = await async_get_base_sum(hass, statistic_id, hourly[0][0])
+        except Exception as err:
+            _LOGGER.error(
+                "Παροχή %s: Αδυναμία ανάγνωσης στατιστικών (%s). "
+                "Δεν γράφτηκαν δεδομένα. Θα ξαναδοκιμαστεί στον επόμενο κύκλο.",
+                supply,
+                err,
+            )
+            return 0, total_consumption, None
+        stats = []
+        for start_dt, kwh in hourly:
+            running += kwh
+            stats.append(StatisticData(start=start_dt, state=running, sum=running))
+        async_add_external_statistics(hass, external_metadata(type_key, supply), stats)
+        await async_warn_if_rows_after(hass, statistic_id, hourly[-1][0])
+        total_consumption = running
 
     if skipped_count:
         _LOGGER.info(
