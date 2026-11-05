@@ -7,7 +7,6 @@ from homeassistant.helpers.entity import DeviceInfo
 
 from .const import DOMAIN, ATTR_CONSUMPTION, ATTR_PRODUCTION, ATTR_INJECTION
 from .helpers.storage import load_initial_jump_flag, save_initial_jump_flag
-from .helpers.statistics import purge_flat_states
 from .helpers.translate import translate
 
 
@@ -33,13 +32,11 @@ class _DeddieSensorBase(SensorEntity, RestoreEntity):
     - Σε επανεκκινήσεις/reload/fresh not first (δηλαδή, όταν το persistent flag
       έχει οριστεί σε True), ο αισθητήρας αρχικοποιείται με την αποθηκευμένη
       κατάσταση μέσω του RestoreEntity.
-    - Πραγματοποιεί purge flat states.
     - Παρέχει common extra_state_attributes formatting.
     """
 
     # Παραμετροποίηση αισθητήρα
     _attr_device_class = SensorDeviceClass.ENERGY
-    _attr_state_class = "total_increasing"
     _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
     _attr_has_entity_name = True
     _attr_suggested_display_precision = 2
@@ -62,7 +59,6 @@ class _DeddieSensorBase(SensorEntity, RestoreEntity):
         self._total = 0.0
         self._fresh_install = False
         self._initial_jump_done_flag = False
-        self._purge_unsub = None
 
     @property
     def available(self) -> bool:
@@ -108,7 +104,6 @@ class _DeddieSensorBase(SensorEntity, RestoreEntity):
                 # Coordinator listener override: άμεση ενημέρωση του state (sos)
                 if self.coordinator.data:
                     self._total = self.coordinator.data.get(self._attr_key, 0.0)
-                    self._schedule_purge()
 
         # Πρώτη ενημέρωση του αισθητήρα με state
         await super().async_added_to_hass()
@@ -132,7 +127,6 @@ class _DeddieSensorBase(SensorEntity, RestoreEntity):
         )
         self._total = new_total
         self.async_write_ha_state()
-        self._schedule_purge()
 
     async def _delayed_update(self, _now) -> None:
         """
@@ -145,23 +139,9 @@ class _DeddieSensorBase(SensorEntity, RestoreEntity):
             else 0.0
         )
         self.async_write_ha_state()
-        self._schedule_purge()
         # Αποθήκευση του flag ώστε στις επανεκκινήσεις να χρησιμοποιείται
         # το restore state
         await save_initial_jump_flag(self.hass, self._supply, True, key=self._attr_key)
-
-    def _schedule_purge(self) -> None:
-        """Προγραμματίζει καθαρισμό flat states μετά από 5 λεπτά,
-        μόνο αν δεν υπάρχει ήδη προγραμματισμένο."""
-        if not self.available or self._purge_unsub is not None:
-            return
-        self._purge_unsub = async_call_later(self.hass, 300, self._async_purge)
-
-    async def _async_purge(self, _now) -> None:
-        """Ασύγχρονος callback που καλεί το purge_flat_states στο event loop
-        και reset του handle."""
-        self._purge_unsub = None
-        await purge_flat_states(self.hass, self.entity_id, self._supply)
 
     @property
     def native_value(self) -> float:

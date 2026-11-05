@@ -64,7 +64,6 @@ async def test_fetch_since_empty_curves(monkeypatch, fake_hass):
         dt_util.now() - timedelta(days=1),
         dt_util.now(),
         "ctx",
-        0,
     )
     assert not any(flags.values())
 
@@ -88,7 +87,6 @@ async def test_fetch_since_exception_handled(monkeypatch, fake_hass):
         dt_util.now() - timedelta(days=1),
         dt_util.now(),
         "ctx",
-        0,
     )
     assert not save_update.called
     assert not save_total.called
@@ -123,7 +121,6 @@ async def test_fetch_since_success(monkeypatch, fake_hass):
         datetime(2025, 4, 21),
         last_valid,
         "ctx",
-        60,
     )
     assert saved["update"] == last_valid
     assert saved["total"] == total
@@ -138,7 +135,6 @@ async def test_fetch_since_success(monkeypatch, fake_hass):
         datetime(2025, 4, 21),
         last_valid,
         "ctx",
-        60,
         class_type=ATTR_PRODUCTION,
     )
     assert saved["update"] == last_valid
@@ -154,7 +150,6 @@ async def test_fetch_since_success(monkeypatch, fake_hass):
         datetime(2025, 4, 21),
         last_valid,
         "ctx",
-        60,
         class_type=ATTR_INJECTION,
     )
     assert saved["update"] == last_valid
@@ -176,7 +171,6 @@ async def test_batch_fetch_api_error_handled(monkeypatch, fake_hass):
         datetime(2025, 1, 1),
         datetime(2025, 1, 2),
         "ctx",
-        60,
     )
 
 
@@ -210,7 +204,6 @@ async def test_batch_fetch_single_batch(monkeypatch, fake_hass):
         datetime(2025, 4, 1),
         datetime(2025, 4, 2),
         "ctx",
-        60,
     )
     assert saved["update"] == last_valid
     assert saved["total"] == new_total
@@ -225,7 +218,6 @@ async def test_batch_fetch_single_batch(monkeypatch, fake_hass):
         datetime(2025, 4, 1),
         datetime(2025, 4, 2),
         "ctx",
-        60,
         class_type=ATTR_PRODUCTION,
     )
     assert saved["update"] == last_valid
@@ -241,7 +233,6 @@ async def test_batch_fetch_single_batch(monkeypatch, fake_hass):
         datetime(2025, 4, 1),
         datetime(2025, 4, 2),
         "ctx",
-        60,
         class_type=ATTR_INJECTION,
     )
     assert saved["update"] == last_valid
@@ -258,11 +249,10 @@ async def test_run_initial_batches_end_time(monkeypatch, fake_hass):
     mock_batch.assert_awaited_once()
     args = mock_batch.await_args.args
     # unpack including class_type
-    _, _, _, _, arg_start, arg_end, label, delay, ctype = args
+    _, _, _, _, arg_start, arg_end, label, ctype = args
     assert arg_start == initial
     assert arg_end == expected_end
     assert label == "Αρχική λήψη κατανάλωσης"
-    assert delay == 60
     assert ctype == ATTR_CONSUMPTION
 
 
@@ -286,7 +276,7 @@ async def test_run_initial_batches_with_pv(monkeypatch, fake_hass):
     # check each call's context_label and class_type
     calls = mock_batch.await_args_list
     labels = [c.args[6] for c in calls]
-    types_ = [c.args[8] for c in calls]
+    types_ = [c.args[7] for c in calls]
 
     assert labels == [
         "Αρχική λήψη παραγωγής",
@@ -300,17 +290,15 @@ async def test_run_initial_batches_with_pv(monkeypatch, fake_hass):
 
 @pytest.mark.asyncio
 async def test_batch_fetch_no_records(monkeypatch, fake_hass):
-    """If get_data_from_api returns [], nothing is imported or scheduled."""
+    """If get_data_from_api returns [], nothing is imported or saved."""
 
     monkeypatch.setattr(utils, "get_data_from_api", AsyncMock(return_value=[]))
     pi = AsyncMock()
     su = AsyncMock()
     st = AsyncMock()
-    ru = AsyncMock()
     monkeypatch.setattr(utils, "process_and_insert", pi)
     monkeypatch.setattr(utils, "save_last_update", su)
     monkeypatch.setattr(utils, "save_last_total", st)
-    monkeypatch.setattr(utils, "run_update_future_statistics", ru)
 
     await batch_fetch(
         fake_hass,
@@ -320,13 +308,11 @@ async def test_batch_fetch_no_records(monkeypatch, fake_hass):
         datetime(2025, 4, 1),
         datetime(2025, 4, 2),
         "CTX",
-        30,
     )
 
     pi.assert_not_awaited()
     su.assert_not_awaited()
     st.assert_not_awaited()
-    ru.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -449,7 +435,7 @@ async def test_batch_fetch_first_date_parse_error(monkeypatch, fake_hass, caplog
     # Run a single‐day batch
     start = datetime(2025, 3, 1)
     end = start + timedelta(days=1)
-    await utils.batch_fetch(fake_hass, "tok", "sup", "tax", start, end, "CTX", 0)
+    await utils.batch_fetch(fake_hass, "tok", "sup", "tax", start, end, "CTX")
 
     # The malformed‐date exception should have been logged
     assert "Αδυναμία επεξεργασίας της πρώτης meterDate" in caplog.text
@@ -487,7 +473,7 @@ async def test_fetch_since_first_date_parse_error(monkeypatch, fake_hass, caplog
     # Run fetch_since
     start = datetime(2025, 4, 1)
     end = start + timedelta(days=1)
-    await utils.fetch_since(fake_hass, "tok", "sup", "tax", start, end, "CTX", 0)
+    await utils.fetch_since(fake_hass, "tok", "sup", "tax", start, end, "CTX")
 
     # Should have logged the parsing failure
     assert "Αδυναμία επεξεργασίας της πρώτης " in caplog.text

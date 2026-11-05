@@ -96,7 +96,6 @@ async def test_restore_state_sensor(monkeypatch, hass):
 
     await sensor.async_added_to_hass()
     assert sensor.native_value == 7.7
-    assert sensor._purge_unsub is not None
     attrs = sensor.extra_state_attributes
     assert attrs[translate("sensor.attr_until", "en")] == "19/04/2025 24:00"
     assert attrs[translate("sensor.attr_last_fetch", "en")] == "21/04/2025 15:30:00"
@@ -176,32 +175,15 @@ async def test_extra_state_attributes_formatting():
 
 
 @pytest.mark.asyncio
-async def test_async_purge_calls_helper(monkeypatch, hass):
-    coord = MagicMock(data={ATTR_CONSUMPTION: 4.4})
-    sensor = DeddieConsumptionSensor(coord, "321", "en")
-    sensor.hass = hass
-    sensor.entity_id = "sensor.test"
-
-    called = AsyncMock()
-    monkeypatch.setattr("deddie_metering.sensor.purge_flat_states", called)
-    sensor._purge_unsub = None
-    sensor._schedule_purge()
-    await sensor._async_purge(None)
-    called.assert_awaited_once_with(hass, "sensor.test", "321")
-
-
-@pytest.mark.asyncio
 async def test_handle_coordinator_update_with_none_data(hass):
     coord = MagicMock(data=None, async_add_listener=MagicMock())
     sensor = DeddieConsumptionSensor(coord, "111111111", "en")
     sensor.hass = hass
     sensor._total = 5.5
     sensor.entity_id = "sensor.test"
-    sensor._purge_unsub = None
 
     sensor._handle_coordinator_update()
     assert sensor.native_value == 0.0
-    assert sensor._purge_unsub is not None
 
 
 @pytest.mark.asyncio
@@ -216,15 +198,6 @@ async def test_available_property(monkeypatch, hass):
     coord.has_pv = True
     assert prod.available is True
     assert inj.available is True
-
-
-def test_schedule_purge_idempotent():
-    coord = MagicMock()
-    sensor = DeddieConsumptionSensor(coord, "supply", "en")
-    sentinel = object()
-    sensor._purge_unsub = sentinel
-    sensor._schedule_purge()
-    assert sensor._purge_unsub is sentinel
 
 
 @pytest.mark.asyncio
@@ -246,3 +219,11 @@ async def test_async_setup_entry(monkeypatch, hass):
     assert DeddieConsumptionSensor in types_set
     assert DeddieProductionSensor in types_set
     assert DeddieInjectionSensor in types_set
+
+
+def test_sensor_has_no_state_class():
+    """HA must not compile a competing statistic for the sensor."""
+    from deddie_metering.sensor import DeddieConsumptionSensor
+
+    assert getattr(DeddieConsumptionSensor, "_attr_state_class", None) is None
+    assert not hasattr(DeddieConsumptionSensor, "_schedule_purge")

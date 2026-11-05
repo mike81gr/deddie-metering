@@ -16,7 +16,6 @@ from .storage import (
     save_last_update,
 )
 
-from .statistics import run_update_future_statistics
 from ..api.client import get_data_from_api
 from ..const import ATTR_PRODUCTION, ATTR_INJECTION, ATTR_CONSUMPTION
 
@@ -145,7 +144,6 @@ async def run_initial_batches(
             initial_time,
             end_time,
             "Αρχική λήψη κατανάλωσης",
-            60,
             ATTR_CONSUMPTION,
         )
     # Αν έχει PV, batch-fetch για παραγωγή/έγχυση
@@ -158,7 +156,6 @@ async def run_initial_batches(
             initial_time,
             end_time,
             "Αρχική λήψη παραγωγής",
-            60,
             ATTR_PRODUCTION,
         )
         await batch_fetch(
@@ -169,7 +166,6 @@ async def run_initial_batches(
             initial_time,
             end_time,
             "Αρχική λήψη έγχυσης",
-            60,
             ATTR_INJECTION,
         )
 
@@ -182,7 +178,6 @@ async def batch_fetch(
     start_dt,
     end_dt,
     context_label: str,
-    stats_delay: int,
     class_type: str = ATTR_CONSUMPTION,
 ):
     """
@@ -194,8 +189,7 @@ async def batch_fetch(
         process_and_insert.
       - Αποθηκεύει τα αποτελέσματα στο persistent store (μέσω save_last_total
         και save_last_update).
-      - Χρησιμοποιεί context_label για logging και stats_delay για deferred
-        future stats update.
+      - Χρησιμοποιεί context_label για logging.
     """
     _LOGGER.info(
         "Παροχή %s: %s από %s έως %s.",
@@ -288,21 +282,6 @@ async def batch_fetch(
             first_meter_dt.strftime("%d/%m/%Y") if first_meter_dt else "Unknown",
             (last_meter_dt - timedelta(days=1)).strftime("%d/%m/%Y"),
         )
-
-        # Κλήση run_update_future_statistics αν υπάρχουν ασυνεπείς εγγραφές
-        # στο statistics με καθυστέρηση 60΄΄ για ασφαλή πρόσβαση στη βάση δεδομένων
-        if total_count > 0:
-            # Χρησιμοποιούμε το start_dt της τελευταίας εγγραφής,
-            # δηλαδή, last_meter_dt - 1 ώρα
-            last_start_dt = last_meter_dt - timedelta(hours=1)
-            hass.loop.call_later(
-                stats_delay,
-                lambda: hass.async_create_task(
-                    run_update_future_statistics(
-                        hass, supply, last_start_dt, total_consumption, type_key
-                    )
-                ),
-            )
     else:
         _LOGGER.info(
             "Παροχή %s: <%s> Σφάλμα κατά τη λήψη δεδομένων από ΔΕΔΔΗΕ (API). "
@@ -320,13 +299,11 @@ async def fetch_since(
     from_dt,
     to_dt,
     context_label: str,
-    stats_delay: int,
     class_type: str = ATTR_CONSUMPTION,
 ):
     """
     Single-fetch: κατεβάζει μία φορά δεδομένα από from_dt έως to_dt,
-    κάνει process_and_insert, αποθηκεύει last_update/last_total και
-    προγραμματίζει future stats.
+    κάνει process_and_insert και αποθηκεύει last_update/last_total.
     """
     # Μεταβλητή για αποθήκευση της πρώτης έγκυρης meterDate που επεξεργάστηκε επιτυχώς.
     first_meter_dt = None
@@ -388,22 +365,6 @@ async def fetch_since(
                             else "Unknown"
                         ),
                         (last_valid - timedelta(days=1)).strftime("%d/%m/%Y"),
-                    )
-                    # Κλήση run_update_future_statistics αν υπάρχουν ασυνεπείς
-                    # εγγραφές στο statistics με καθυστέρηση 60΄΄ για ασφαλή πρόσβαση
-                    # στη βάση δεδομένων
-                    last_start_dt = last_valid - timedelta(hours=1)
-                    hass.loop.call_later(
-                        stats_delay,
-                        lambda: hass.async_create_task(
-                            run_update_future_statistics(
-                                hass,
-                                supply,
-                                last_start_dt,
-                                total_consumption,
-                                type_key,
-                            )
-                        ),
                     )
         else:
             _LOGGER.info(
