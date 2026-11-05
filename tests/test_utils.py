@@ -341,6 +341,7 @@ async def test_process_and_insert_production_and_injection(monkeypatch, fake_has
     )
     monkeypatch.setattr(utils, "async_get_base_sum", AsyncMock(return_value=0.0))
     monkeypatch.setattr(utils, "async_warn_if_rows_after", AsyncMock())
+    monkeypatch.setattr(utils, "async_track_queued", AsyncMock())
 
     # Production branch (no ‘production’ data in these records)
     count_prod, total_prod, last_prod = await process_and_insert(
@@ -400,6 +401,7 @@ async def test_process_and_insert_bad_consumption_inner(monkeypatch, fake_hass):
     monkeypatch.setattr(utils, "async_add_external_statistics", dummy_import)
     monkeypatch.setattr(utils, "async_get_base_sum", AsyncMock(return_value=0.0))
     monkeypatch.setattr(utils, "async_warn_if_rows_after", AsyncMock())
+    monkeypatch.setattr(utils, "async_track_queued", AsyncMock())
     overall_count, total_consumption, last_valid = await process_and_insert(
         fake_hass, records, "SUPPLY", 0.0, "consumption"
     )
@@ -518,6 +520,7 @@ async def test_process_and_insert_display_names(monkeypatch, fake_hass):
     monkeypatch.setattr(utils, "async_add_external_statistics", dummy_import_statistics)
     monkeypatch.setattr(utils, "async_get_base_sum", AsyncMock(return_value=0.0))
     monkeypatch.setattr(utils, "async_warn_if_rows_after", AsyncMock())
+    monkeypatch.setattr(utils, "async_track_queued", AsyncMock())
 
     # Κατανάλωση
     await process_and_insert(fake_hass, records, supply, 0.0, "consumption")

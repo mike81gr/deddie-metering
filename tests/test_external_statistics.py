@@ -31,6 +31,10 @@ class FakeRecorder:
         self.rows = dict(rows or {})
         self.fail = fail
         self.written: list = []
+        # HA queues imports on the recorder thread; nothing is readable until
+        # the queue runs (and during startup it only runs once HA has started).
+        self.deferred = False
+        self.queue: list = []
 
     async def async_add_executor_job(self, func, *args):
         if self.fail:
@@ -44,13 +48,23 @@ class FakeRecorder:
 
     def add_external(self, hass, metadata, stats):
         self.written.append((metadata, list(stats)))
-        for s in stats:
+        self.queue.extend(stats)
+        if not self.deferred:
+            self.commit()
+
+    def commit(self):
+        for s in self.queue:
             self.rows[s["start"]] = s["sum"]
+        self.queue = []
+
+    async def async_block_till_done(self):
+        self.commit()
 
 
 @pytest.fixture
 def recorder(monkeypatch):
     rec = FakeRecorder()
+    monkeypatch.setattr(ext, "_PENDING", {})
     monkeypatch.setattr(ext, "get_instance", lambda hass: rec)
     monkeypatch.setattr(ext, "statistics_during_period", rec.statistics_during_period)
     monkeypatch.setattr(ext, "async_add_external_statistics", rec.add_external)
@@ -140,14 +154,14 @@ async def test_reimport_before_all_rows_rebases_from_zero(recorder):
 async def test_base_read_failure_writes_nothing(recorder, caplog):
     recorder.fail = True
     with caplog.at_level(logging.ERROR, logger="deddie_metering"):
-        count, total, last = await process_and_insert(
-            MagicMock(),
-            _day_records(datetime(2026, 11, 1)),
-            SUPPLY,
-            42.0,
-            "consumption",
-        )
-    assert (count, total, last) == (0, 42.0, None)
+        with pytest.raises(ext.StatisticsReadError):
+            await process_and_insert(
+                MagicMock(),
+                _day_records(datetime(2026, 11, 1)),
+                SUPPLY,
+                42.0,
+                "consumption",
+            )
     assert recorder.written == []
     assert "database is locked" in caplog.text
 
@@ -221,3 +235,141 @@ async def test_backfill_covers_pv_types(monkeypatch, recorder):
     )
     types = [c.args[-1] for c in bf.await_args_list]
     assert types == [ATTR_CONSUMPTION, ATTR_PRODUCTION, ATTR_INJECTION]
+
+
+def _starting_hass():
+    """HA during startup: the recorder has not run any queued import yet."""
+    hass = MagicMock()
+    hass.is_running = False
+    return hass
+
+
+@pytest.mark.asyncio
+async def test_startup_second_batch_bases_on_queued_rows(recorder):
+    """Batch 2 must continue from batch 1 even though batch 1 is only queued."""
+    recorder.deferred = True
+    hass = _starting_hass()
+    day1, day2 = datetime(2026, 11, 1), datetime(2026, 11, 2)
+    await process_and_insert(hass, _day_records(day1), SUPPLY, 0.0, "consumption")
+    _, total, _ = await process_and_insert(
+        hass, _day_records(day2), SUPPLY, 0.0, "consumption"
+    )
+    recorder.commit()
+    assert recorder.rows[day2] == pytest.approx(25.0)
+    assert total == pytest.approx(48.0)
+
+
+@pytest.mark.asyncio
+async def test_queued_row_wins_over_stale_committed_row(recorder):
+    """A re-import's queued hour overrides the older committed value."""
+    day1, day2 = datetime(2026, 11, 1), datetime(2026, 11, 2)
+    recorder.rows[day2 - timedelta(hours=1)] = 5000.0  # stale, from an old run
+    recorder.deferred = True
+    hass = _starting_hass()
+    await process_and_insert(hass, _day_records(day1), SUPPLY, 0.0, "consumption")
+    await process_and_insert(hass, _day_records(day2), SUPPLY, 0.0, "consumption")
+    recorder.commit()
+    assert recorder.rows[day2] == pytest.approx(25.0)
+
+
+@pytest.mark.asyncio
+async def test_running_hass_waits_for_commit_and_clears_overlay(recorder):
+    recorder.deferred = True
+    hass = MagicMock()
+    hass.is_running = True
+    day = datetime(2026, 11, 1)
+    await process_and_insert(hass, _day_records(day), SUPPLY, 0.0, "consumption")
+    assert recorder.rows[day + timedelta(hours=23)] == pytest.approx(24.0)
+    assert ext._PENDING.get(STAT_ID, {}) == {}
+
+
+@pytest.mark.asyncio
+async def test_batch_fetch_stops_after_failed_batch(monkeypatch):
+    """A failed middle batch must not be skipped over: stop, save the last good."""
+    good_dt = datetime(2025, 6, 1)
+    api = AsyncMock(side_effect=[["rec"], RuntimeError("HTTP 500"), ["rec"]])
+    pi = AsyncMock(return_value=(24, 24.0, good_dt))
+    save_update, save_total = AsyncMock(), AsyncMock()
+    monkeypatch.setattr(utils, "get_data_from_api", api)
+    monkeypatch.setattr(utils, "process_and_insert", pi)
+    monkeypatch.setattr(utils, "load_last_total", AsyncMock(return_value=0.0))
+    monkeypatch.setattr(utils, "save_last_update", save_update)
+    monkeypatch.setattr(utils, "save_last_total", save_total)
+    await utils.batch_fetch(
+        MagicMock(),
+        "tok",
+        SUPPLY,
+        "tax",
+        datetime(2024, 1, 1),
+        datetime(2026, 11, 1),
+        "CTX",
+        ATTR_CONSUMPTION,
+    )
+    assert api.await_count == 2
+    save_update.assert_awaited_once()
+    assert save_update.await_args.args[2] == good_dt
+
+
+@pytest.mark.asyncio
+async def test_batch_fetch_stops_on_statistics_read_error(monkeypatch):
+    api = AsyncMock(return_value=["rec"])
+    pi = AsyncMock(
+        side_effect=[
+            (24, 24.0, datetime(2025, 6, 1)),
+            ext.StatisticsReadError("locked"),
+        ]
+    )
+    monkeypatch.setattr(utils, "get_data_from_api", api)
+    monkeypatch.setattr(utils, "process_and_insert", pi)
+    monkeypatch.setattr(utils, "load_last_total", AsyncMock(return_value=0.0))
+    monkeypatch.setattr(utils, "save_last_update", AsyncMock())
+    monkeypatch.setattr(utils, "save_last_total", AsyncMock())
+    await utils.batch_fetch(
+        MagicMock(),
+        "tok",
+        SUPPLY,
+        "tax",
+        datetime(2023, 1, 1),
+        datetime(2026, 11, 1),
+        "CTX",
+        ATTR_CONSUMPTION,
+    )
+    assert api.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_fetch_since_statistics_read_error_saves_nothing(monkeypatch):
+    monkeypatch.setattr(utils, "get_data_from_api", AsyncMock(return_value=["rec"]))
+    monkeypatch.setattr(
+        utils, "process_and_insert", AsyncMock(side_effect=ext.StatisticsReadError("x"))
+    )
+    monkeypatch.setattr(utils, "load_last_total", AsyncMock(return_value=0.0))
+    save_update, save_total = AsyncMock(), AsyncMock()
+    monkeypatch.setattr(utils, "save_last_update", save_update)
+    monkeypatch.setattr(utils, "save_last_total", save_total)
+    await utils.fetch_since(
+        MagicMock(),
+        "tok",
+        SUPPLY,
+        "tax",
+        datetime(2026, 11, 1),
+        datetime(2026, 11, 5),
+        "CTX",
+        ATTR_CONSUMPTION,
+    )
+    save_update.assert_not_awaited()
+    save_total.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_ensure_survives_db_error(monkeypatch, recorder, caplog):
+    """A transient DB error must not fail the config entry; retry next start."""
+    recorder.fail = True
+    bf = AsyncMock()
+    monkeypatch.setattr(utils, "batch_fetch", bf)
+    with caplog.at_level(logging.ERROR, logger="deddie_metering"):
+        await utils.async_ensure_external_statistics(
+            MagicMock(), "tok", SUPPLY, "tax", datetime(2025, 4, 15), has_pv=False
+        )
+    bf.assert_not_awaited()
+    assert "database is locked" in caplog.text

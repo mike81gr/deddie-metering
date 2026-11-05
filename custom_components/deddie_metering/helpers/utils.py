@@ -7,6 +7,8 @@ from .external_statistics import (
     async_add_external_statistics,
     async_get_base_sum,
     async_has_rows,
+    async_track_queued,
+    StatisticsReadError,
     async_warn_if_rows_after,
     external_metadata,
     external_statistic_id,
@@ -36,8 +38,9 @@ async def process_and_insert(
     statistic `deddie_metering:<type_key>_<supply>`. Δεκτές είναι μόνο πλήρεις
     ημέρες (24 έγκυρα records). Το άθροισμα ξεκινά από το sum της εγγραφής
     αμέσως πριν από την πρώτη εισερχόμενη ώρα (rebase), άρα η επανεισαγωγή
-    δίνει ίδια αποτελέσματα. Το `total_consumption` επιστρέφεται αμετάβλητο
-    μόνο όταν η ανάγνωση της βάσης αποτύχει (τότε δεν γράφεται τίποτα).
+    δίνει ίδια αποτελέσματα. Αν δεν γίνει δεκτή καμία πλήρης ημέρα, το
+    `total_consumption` επιστρέφεται αμετάβλητο. Αν αποτύχει η ανάγνωση της
+    βάσης, δεν γράφεται τίποτα και εγείρεται StatisticsReadError.
     """
     skipped_count = 0
     overall_count = 0
@@ -106,12 +109,15 @@ async def process_and_insert(
                 supply,
                 err,
             )
-            return 0, total_consumption, None
+            raise StatisticsReadError(str(err)) from err
         stats = []
+        queued = {}
         for start_dt, kwh in hourly:
             running += kwh
             stats.append(StatisticData(start=start_dt, state=running, sum=running))
+            queued[start_dt] = running
         async_add_external_statistics(hass, external_metadata(type_key, supply), stats)
+        await async_track_queued(hass, statistic_id, queued)
         await async_warn_if_rows_after(hass, statistic_id, hourly[-1][0])
         total_consumption = running
 
@@ -258,15 +264,21 @@ async def batch_fetch(
                     current_start.strftime("%d/%m/%Y"),
                     batch_end.strftime("%d/%m/%Y"),
                 )
+        except StatisticsReadError:
+            # Ήδη καταγράφηκε. Σταματάμε ώστε το last_update να μείνει στο
+            # τελευταίο επιτυχές batch και η επόμενη ενημέρωση να συνεχίσει από εκεί.
+            break
         except Exception as err:
             _LOGGER.error(
-                "Παροχή %s: <%s> Σφάλμα στο batch από %s έως %s: %s.",
+                "Παροχή %s: <%s> Σφάλμα στο batch από %s έως %s: %s. "
+                "Η λήψη σταματά εδώ και θα συνεχιστεί στην επόμενη ενημέρωση.",
                 supply,
                 context_label,
                 current_start.strftime("%d/%m/%Y"),
                 batch_end.strftime("%d/%m/%Y"),
                 err,
             )
+            break
         current_start = batch_end + timedelta(days=1)
 
     # Αν βρέθηκαν έγκυρες εγγραφές, ενημερώνουμε τα last_update
@@ -371,6 +383,10 @@ async def fetch_since(
             _LOGGER.info(
                 "Παροχή %s: <%s> Δεν βρέθηκαν νέες εγγραφές.", supply, context_label
             )
+    except StatisticsReadError:
+        # Ήδη καταγράφηκε· δεν αποθηκεύεται τίποτα,
+        # ξαναδοκιμάζεται στην επόμενη ενημέρωση.
+        return
     except Exception:
         _LOGGER.error(
             "Παροχή %s: <%s> Σφάλμα κατά τη λήψη δεδομένων από ΔΕΔΔΗΕ (API).",
@@ -395,12 +411,23 @@ async def async_ensure_external_statistics(
         types += [(ATTR_PRODUCTION, "production"), (ATTR_INJECTION, "injection")]
     for class_type, type_key in types:
         statistic_id = external_statistic_id(type_key, supply)
-        if await async_has_rows(
-            hass,
-            statistic_id,
-            initial_time,
-            initial_time + timedelta(days=_BACKFILL_CHECK_DAYS),
-        ):
+        try:
+            has_first_week = await async_has_rows(
+                hass,
+                statistic_id,
+                initial_time,
+                initial_time + timedelta(days=_BACKFILL_CHECK_DAYS),
+            )
+        except Exception as err:
+            _LOGGER.error(
+                "Παροχή %s: Αδυναμία ελέγχου του %s (%s). "
+                "Ο έλεγχος θα επαναληφθεί στην επόμενη εκκίνηση.",
+                supply,
+                statistic_id,
+                err,
+            )
+            continue
+        if has_first_week:
             continue
         _LOGGER.info(
             "Παροχή %s: Το %s δεν έχει δεδομένα από %s. Έναρξη πλήρους λήψης.",
