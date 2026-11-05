@@ -45,9 +45,8 @@
 - Supports validated credentials via dry‑run API call.
 - Auto-detect for installed photovoltaic (PV).
 - Periodic data fetching and restoration after restarts, with automatic detection of >365-day gaps to trigger batch-fetch of historical data (restriction by HEDNO API).
-- Automatic purge of intermediate "flat" states after each successful update to ensure accurate history display.
-- Adds statistics to the Home Assistant `recorder` database and corrects inconsistent sum of "future" records for consistent data visualization.
-- Shows cumulative consumption (kWh) using  total_increasing "smart" energy sensors, with the ability to restore the last value and avoid data loss.
+- Writes hourly statistics to an integration-owned external statistic (`deddie_metering:<type>_<supply>`) in the Home Assistant `recorder`, so delayed HEDNO data never conflicts with Home Assistant's own statistics.
+- Shows cumulative consumption (kWh) in energy sensors, with the ability to restore the last value and avoid data loss.
 - Creating device "meter" including available energy sensors.
 - Display diagnostic data in the Home Assistant "Health System".
 - Supports translations (EN/EL), persistent notifications, and advanced handling of missing or partial data for statistics accuracy.
@@ -61,9 +60,8 @@
 - Επαλήθευση διαπιστευτηρίων μέσω δοκιμαστικής κλήσης API.
 - Αυτόματη ανίχνευση ύπαρξης εγκατεστημένων φωτοβολταϊκών.
 - Περιοδική άντληση και αποθήκευση δεδομένων με ανίχνευση κενών >365 ημερών (περιορισμός από API ΔΕΔΔΗΕ) για τμηματική άντληση ιστορικών.
-- Αυτόματος καθαρισμός των "flat" ενδιάμεσων καταστάσεων αισθητήρων μετά από κάθε ενημέρωση για ακριβής εμφάνιση ιστορικού.
-- Εισαγωγή στατιστικών στο `recorder` και διόρθωση αθροίσματος "μελλοντικών" εγγραφών για συνεπή απεικόνιση δεδομένων.
-- Εμφάνιση αθροιστικής κατανάλωσης (kWh) χρησιμοποιώντας "έξυπνους" αισθητήρες total_increasing, με επαναφορά τελευταίας τιμής και αποφυγή απώλειας δεδομένων.
+- Εγγραφή ωριαίων στατιστικών σε ξεχωριστό εξωτερικό statistic της ενσωμάτωσης (`deddie_metering:<τύπος>_<παροχή>`) στο `recorder`, ώστε τα καθυστερημένα δεδομένα του ΔΕΔΔΗΕ να μη συγκρούονται με τα στατιστικά του Home Assistant.
+- Εμφάνιση αθροιστικής κατανάλωσης (kWh) σε αισθητήρες ενέργειας, με επαναφορά τελευταίας τιμής και αποφυγή απώλειας δεδομένων.
 - Δημιουργία συσκευής "μετρητή" με ενσωματωμένους τους διαθέσιμους αισθητήρες ενέργειας.
 - Εμφάνιση διαγνωστικών δεδομένων στο "Σύστημα Υγείας" του Home Assistant.
 - Υποστήριξη γλώσσας (EL/EN), μόνιμες ειδοποιήσεις, και προηγμένη διαχείριση ελλειπόντων δεδομένων.
@@ -161,20 +159,18 @@ Persistent notifications will inform you of successful token renewal or any erro
 
 <h2 id="recorder_en-section">📊 Statistics & Recorder</h2>
 
-This integration leverages the built-in Home Assistant `recorder` to store daily electricity statistics and allows you to:
-- Use Energy Dashboard for available consumption/production/injection sensors.
+This integration leverages the built-in Home Assistant `recorder` to store hourly electricity statistics and allows you to:
+- Use the Energy Dashboard with the integration's statistics: select **Κατανάλωση ΔΕΔΔΗΕ &lt;supply&gt;** (and, with PV, **Παραγωγή** / **Έγχυση**), whose id starts with `deddie_metering:`.
+  *Upgrading from v2.0.0:* switch the dashboard source once; the old `sensor.deddie_*` statistic can then be deleted in Developer Tools → Statistics.
 - Monitor long-term trends.
-- Automatically correct "future" statistical records (inconsistent sum) for consistent data visualization.
-- Automatically purge intermediate "flat" states after updates for accurate history in the UI.
 - Perform automations on kWh values (e.g. mobile notifications).
 
 <h2 id="recorder_el-section">📊 Στατιστικά & Recorder</h2>
 
 Η ενσωμάτωση αξιοποιεί τον μηχανισμό `recorder` του Home Assistant ώστε να:
-- Απεικονίζονται οι διαθέσιμοι αισθητήρες κατανάλωση, παραγωγή & έγχυση ενέργειας στο Ταμπλό Ενέργειας του Home Assistant.
+- Χρησιμοποιούνται τα στατιστικά της ενσωμάτωσης στο Ταμπλό Ενέργειας: επιλέξτε **Κατανάλωση ΔΕΔΔΗΕ &lt;παροχή&gt;** (και, με φωτοβολταϊκά, **Παραγωγή** / **Έγχυση**), με id που ξεκινά από `deddie_metering:`.
+  *Αναβάθμιση από v2.0.0:* αλλάξτε μία φορά την πηγή στο ταμπλό· το παλιό statistic `sensor.deddie_*` μπορεί μετά να διαγραφεί από Εργαλεία προγραμματιστή → Στατιστικά.
 - Παρέχει ιστορικά δεδομένα μακροχρόνιας ανάλυσης.
-- Διορθώνει αυτόματα "future" στατιστικές εγγραφές (ασυνεπές άθροισμα) για συνεπή απεικόνιση δεδομένων.
-- Αυτόματη εκκαθάριση "ενδιάμεσων" καταστάσεων μετά από ενημερώσεις για ακριβές ιστορικό στη διεπαφή χρήστη.
 - Υποστηρίζει αυτοματισμούς με βάση τις kWh (π.χ. ειδοποιήσεις συσκευών).
 
 ---
