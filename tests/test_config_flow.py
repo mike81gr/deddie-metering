@@ -390,12 +390,12 @@ async def test_interval_boundary_values(hass):
 
 
 def test_config_flow_class_attributes():
-    """Verify ConfigFlow version and connection class attributes."""
+    """Verify ConfigFlow version; CONNECTION_CLASS must not be set
+    (deprecated, removed in HA 2027.5 — iot_class lives in manifest.json)."""
     from deddie_metering.config_flow import DeddieConfigFlow
-    from homeassistant.config_entries import CONN_CLASS_CLOUD_POLL
 
     assert DeddieConfigFlow.MINOR_VERSION == 2
-    assert DeddieConfigFlow.CONNECTION_CLASS == CONN_CLASS_CLOUD_POLL
+    assert "CONNECTION_CLASS" not in vars(DeddieConfigFlow)
 
 
 def test_async_get_options_flow_returns_handler(hass):
