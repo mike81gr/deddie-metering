@@ -29,7 +29,6 @@ class DeddieConfigFlow(
 
     VERSION = 1
     MINOR_VERSION = 2
-    CONNECTION_CLASS = config_entries.CONN_CLASS_CLOUD_POLL
 
     def _validate_user_input(self, user_input: dict) -> dict[str, str]:
         """

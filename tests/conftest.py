@@ -215,7 +215,6 @@ class DummyOptionsFlow:
 dummy_config_entries = type("DummyModule", (), {"ConfigFlow": DummyConfigFlow})
 config_entries_module = ModuleType("homeassistant.config_entries")
 config_entries_module.ConfigFlow = DummyConfigFlow
-config_entries_module.CONN_CLASS_CLOUD_POLL = "cloud_poll"
 config_entries_module.ConfigFlowResult = dict
 config_entries_module.ConfigEntry = DummyConfigEntry
 config_entries_module.OptionsFlow = DummyOptionsFlow
