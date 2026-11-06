@@ -162,6 +162,7 @@ Persistent notifications will inform you of successful token renewal or any erro
 This integration leverages the built-in Home Assistant `recorder` to store hourly electricity statistics and allows you to:
 - Use the Energy Dashboard with the integration's statistics: select **Κατανάλωση ΔΕΔΔΗΕ &lt;supply&gt;** (and, with PV, **Παραγωγή** / **Έγχυση**), whose id starts with `deddie_metering:`.
   *Upgrading from v2.0.0:* switch the dashboard source once; the old `sensor.deddie_*` statistic can then be deleted in Developer Tools → Statistics.
+  *Re-downloading the history* (e.g. after HEDNO corrects data): change the start date in the integration's options (this re-runs the full download), or delete the `deddie_metering:` statistic in Developer Tools → Statistics and restart Home Assistant. Re-downloading recomputes every total from the data, so it is always safe.
 - Monitor long-term trends.
 - Perform automations on kWh values (e.g. mobile notifications).
 
@@ -170,6 +171,7 @@ This integration leverages the built-in Home Assistant `recorder` to store hourl
 Η ενσωμάτωση αξιοποιεί τον μηχανισμό `recorder` του Home Assistant ώστε να:
 - Χρησιμοποιούνται τα στατιστικά της ενσωμάτωσης στο Ταμπλό Ενέργειας: επιλέξτε **Κατανάλωση ΔΕΔΔΗΕ &lt;παροχή&gt;** (και, με φωτοβολταϊκά, **Παραγωγή** / **Έγχυση**), με id που ξεκινά από `deddie_metering:`.
   *Αναβάθμιση από v2.0.0:* αλλάξτε μία φορά την πηγή στο ταμπλό· το παλιό statistic `sensor.deddie_*` μπορεί μετά να διαγραφεί από Εργαλεία προγραμματιστή → Στατιστικά.
+  *Επανάληψη λήψης ιστορικού* (π.χ. μετά από διόρθωση δεδομένων από τον ΔΕΔΔΗΕ): αλλάξτε την αρχική ημερομηνία στις επιλογές της ενσωμάτωσης (εκτελείται ξανά η πλήρης λήψη), ή διαγράψτε το statistic `deddie_metering:` από Εργαλεία προγραμματιστή → Στατιστικά και επανεκκινήστε το Home Assistant. Η νέα λήψη υπολογίζει ξανά όλα τα σύνολα από τα δεδομένα, άρα είναι πάντα ασφαλής.
 - Παρέχει ιστορικά δεδομένα μακροχρόνιας ανάλυσης.
 - Υποστηρίζει αυτοματισμούς με βάση τις kWh (π.χ. ειδοποιήσεις συσκευών).
 
