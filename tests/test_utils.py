@@ -245,6 +245,7 @@ async def test_run_initial_batches_end_time(monkeypatch, fake_hass):
     expected_end = dt_util.now()
     mock_batch = AsyncMock()
     monkeypatch.setattr(utils, "batch_fetch", mock_batch)
+    monkeypatch.setattr(utils, "save_backfill_done", AsyncMock())
     await run_initial_batches(fake_hass, "tok", "sup", "tax", initial, False, True)
     mock_batch.assert_awaited_once()
     args = mock_batch.await_args.args
@@ -266,6 +267,7 @@ async def test_run_initial_batches_with_pv(monkeypatch, fake_hass):
 
     mock_batch = AsyncMock()
     monkeypatch.setattr(utils, "batch_fetch", mock_batch)
+    monkeypatch.setattr(utils, "save_backfill_done", AsyncMock())
 
     # call with has_pv=True
     await run_initial_batches(fake_hass, "tok", "sup", "tax", initial, True, False)

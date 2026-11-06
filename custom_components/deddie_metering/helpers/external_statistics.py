@@ -15,6 +15,7 @@ from homeassistant.components.recorder.statistics import (
     StatisticMeanType,
     StatisticMetaData,
     async_add_external_statistics,
+    get_last_statistics,
     statistics_during_period,
 )
 from homeassistant.const import UnitOfEnergy
@@ -41,13 +42,23 @@ _DISPLAY_NAMES = {
 # Look-back for "search the whole statistic" queries. Relative to first_start
 # so the bound keeps first_start's tzinfo (aware in HA, naive in the stubbed tests).
 _FULL_HISTORY = timedelta(days=36500)
+# Widening look-backs for the base row: the previous hour is the normal case;
+# a gap is usually found within a day, a month or a year, so the whole history
+# is read only when all of those are empty.
+_BASE_LOOKBACKS = (
+    timedelta(hours=1),
+    timedelta(days=1),
+    timedelta(days=31),
+    timedelta(days=366),
+    _FULL_HISTORY,
+)
 
 __all__ = [
     "StatisticData",
     "async_add_external_statistics",
     "StatisticsReadError",
     "async_get_base_sum",
-    "async_has_rows",
+    "async_has_any_rows",
     "async_track_queued",
     "async_warn_if_rows_after",
     "external_metadata",
@@ -96,8 +107,9 @@ def _ts(start) -> float:
 async def async_get_base_sum(hass, statistic_id: str, first_start: datetime) -> float:
     """Sum of the latest row before `first_start`; 0.0 when none exists.
 
-    Considers both committed rows (previous hour first, then the whole
-    statistic, so a long gap never yields a wrong base of 0) and rows this
+    Considers both committed rows (previous hour first, then widening
+    look-backs up to the whole statistic, so a gap of any length never yields
+    a wrong base of 0) and rows this
     process has queued but the recorder may not have written yet. A queued row
     wins over a committed one at the same or an earlier hour, because it is
     newer. Database errors propagate: the caller must not write when the base
@@ -107,8 +119,8 @@ async def async_get_base_sum(hass, statistic_id: str, first_start: datetime) -> 
     queued_starts = [start for start in pending if start < first_start]
     queued = max(queued_starts) if queued_starts else None
     committed = None
-    for window_start in (first_start - timedelta(hours=1), first_start - _FULL_HISTORY):
-        rows = await _rows(hass, statistic_id, window_start, first_start)
+    for lookback in _BASE_LOOKBACKS:
+        rows = await _rows(hass, statistic_id, first_start - lookback, first_start)
         if rows:
             committed = rows[-1]
             break
@@ -133,11 +145,12 @@ async def async_track_queued(hass, statistic_id: str, rows: dict) -> None:
         _PENDING.pop(statistic_id, None)
 
 
-async def async_has_rows(
-    hass, statistic_id: str, start: datetime, end: datetime
-) -> bool:
-    """True when the statistic has at least one hourly row in [start, end)."""
-    return bool(await _rows(hass, statistic_id, start, end))
+async def async_has_any_rows(hass, statistic_id: str) -> bool:
+    """True when the statistic has at least one row (reads only the latest)."""
+    result = await get_instance(hass).async_add_executor_job(
+        get_last_statistics, hass, 1, statistic_id, True, {"sum"}
+    )
+    return bool(result.get(statistic_id))
 
 
 async def async_warn_if_rows_after(hass, statistic_id: str, after: datetime) -> None:

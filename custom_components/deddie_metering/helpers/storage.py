@@ -92,3 +92,24 @@ async def save_initial_jump_flag(hass, supply: str, flag: bool, key: str = "acti
     data = await store.async_load() or {}
     data[f"jump_{key}_{supply}"] = flag
     await store.async_save(data)
+
+
+async def load_backfill_done(hass, supply: str, key: str = ATTR_CONSUMPTION) -> bool:
+    """
+    True όταν η πλήρης λήψη του εξωτερικού statistic για αυτή την παροχή
+    και τον τύπο (κατανάλωση/παραγωγή/έγχυση) ολοκληρώθηκε χωρίς σφάλμα.
+    """
+    store = Store(hass, 1, f"{DOMAIN}_external_backfill.json")
+    data = await store.async_load()
+    return bool(data and data.get(f"backfill_{key}_{supply}"))
+
+
+async def save_backfill_done(hass, supply: str, key: str = ATTR_CONSUMPTION):
+    """
+    Σημειώνει ότι η πλήρης λήψη του εξωτερικού statistic ολοκληρώθηκε,
+    ώστε να μην επαναλαμβάνεται σε κάθε εκκίνηση.
+    """
+    store = Store(hass, 1, f"{DOMAIN}_external_backfill.json")
+    data = await store.async_load() or {}
+    data[f"backfill_{key}_{supply}"] = True
+    await store.async_save(data)

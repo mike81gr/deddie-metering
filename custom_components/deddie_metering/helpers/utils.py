@@ -6,7 +6,7 @@ from .external_statistics import (
     StatisticData,
     async_add_external_statistics,
     async_get_base_sum,
-    async_has_rows,
+    async_has_any_rows,
     async_track_queued,
     StatisticsReadError,
     async_warn_if_rows_after,
@@ -14,7 +14,9 @@ from .external_statistics import (
     external_statistic_id,
 )
 from .storage import (
+    load_backfill_done,
     load_last_total,
+    save_backfill_done,
     save_last_total,
     save_last_update,
 )
@@ -32,6 +34,7 @@ async def process_and_insert(
     supply: str,
     total_consumption: float,
     type_key: str,
+    warn_later: bool = True,
 ) -> tuple:
     """
     Επεξεργάζεται τα records του API και γράφει ωριαίες εγγραφές στο εξωτερικό
@@ -40,7 +43,9 @@ async def process_and_insert(
     αμέσως πριν από την πρώτη εισερχόμενη ώρα (rebase), άρα η επανεισαγωγή
     δίνει ίδια αποτελέσματα. Αν δεν γίνει δεκτή καμία πλήρης ημέρα, το
     `total_consumption` επιστρέφεται αμετάβλητο. Αν αποτύχει η ανάγνωση της
-    βάσης, δεν γράφεται τίποτα και εγείρεται StatisticsReadError.
+    βάσης, δεν γράφεται τίποτα και εγείρεται StatisticsReadError. Με
+    warn_later=False δεν καταγράφεται WARNING για μεταγενέστερες εγγραφές
+    (ενδιάμεσα batches: το επόμενο batch θα τις ξαναγράψει).
     """
     skipped_count = 0
     overall_count = 0
@@ -118,7 +123,8 @@ async def process_and_insert(
             queued[start_dt] = running
         async_add_external_statistics(hass, external_metadata(type_key, supply), stats)
         await async_track_queued(hass, statistic_id, queued)
-        await async_warn_if_rows_after(hass, statistic_id, hourly[-1][0])
+        if warn_later:
+            await async_warn_if_rows_after(hass, statistic_id, hourly[-1][0])
         total_consumption = running
 
     if skipped_count:
@@ -137,13 +143,15 @@ async def run_initial_batches(
     hass, token, supply, tax, initial_time, has_pv: bool, inc_con: bool
 ):
     """
-    Αρχική λήψη για κατανάλωση, παραγωγή και έγχυση
+    Αρχική λήψη για κατανάλωση, παραγωγή και έγχυση. Κάθε λήψη που
+    ολοκληρώνεται χωρίς σφάλμα σημειώνεται ως ολοκληρωμένη πλήρης λήψη του
+    εξωτερικού statistic, ώστε να μην επαναληφθεί κατά την εκκίνηση.
     """
     end_time = dt_util.now()
 
     # Batch-fetch για κατανάλωση
     if inc_con:
-        await batch_fetch(
+        if await batch_fetch(
             hass,
             token,
             supply,
@@ -152,10 +160,11 @@ async def run_initial_batches(
             end_time,
             "Αρχική λήψη κατανάλωσης",
             ATTR_CONSUMPTION,
-        )
+        ):
+            await save_backfill_done(hass, supply, key=ATTR_CONSUMPTION)
     # Αν έχει PV, batch-fetch για παραγωγή/έγχυση
     if has_pv:
-        await batch_fetch(
+        if await batch_fetch(
             hass,
             token,
             supply,
@@ -164,8 +173,9 @@ async def run_initial_batches(
             end_time,
             "Αρχική λήψη παραγωγής",
             ATTR_PRODUCTION,
-        )
-        await batch_fetch(
+        ):
+            await save_backfill_done(hass, supply, key=ATTR_PRODUCTION)
+        if await batch_fetch(
             hass,
             token,
             supply,
@@ -174,7 +184,8 @@ async def run_initial_batches(
             end_time,
             "Αρχική λήψη έγχυσης",
             ATTR_INJECTION,
-        )
+        ):
+            await save_backfill_done(hass, supply, key=ATTR_INJECTION)
 
 
 async def batch_fetch(
@@ -197,6 +208,10 @@ async def batch_fetch(
       - Αποθηκεύει τα αποτελέσματα στο persistent store (μέσω save_last_total
         και save_last_update).
       - Χρησιμοποιεί context_label για logging.
+      - Καταγράφει WARNING για μεταγενέστερες εγγραφές μόνο στο τελευταίο batch
+        (τις προηγούμενες τις ξαναγράφει το επόμενο batch).
+    Επιστρέφει True όταν έτρεξαν όλα τα batches χωρίς σφάλμα (ακόμη κι αν ο
+    ΔΕΔΔΗΕ δεν είχε εγγραφές) και False όταν η λήψη σταμάτησε σε σφάλμα.
     """
     _LOGGER.info(
         "Παροχή %s: %s από %s έως %s.",
@@ -218,6 +233,7 @@ async def batch_fetch(
         type_key = "production"
     elif class_type == ATTR_INJECTION:
         type_key = "injection"
+    completed = True
     while current_start < end_dt:
         # Xρησιμοποιούμε timedelta(days=364) ώστε το effective διάστημα
         # (με το -1 day στο fromDate) να είναι 365 ημέρες.
@@ -251,7 +267,12 @@ async def batch_fetch(
                 # Χρησιμοποιούμε το αποτέλεσμα της process_and_insert για να
                 # πάρουμε την τελευταία έγκυρη meterDate
                 count, total_consumption, last_valid = await process_and_insert(
-                    hass, records, supply, total_consumption, type_key
+                    hass,
+                    records,
+                    supply,
+                    total_consumption,
+                    type_key,
+                    warn_later=batch_end >= end_dt,
                 )
                 total_count += count
                 if last_valid:
@@ -267,6 +288,7 @@ async def batch_fetch(
         except StatisticsReadError:
             # Ήδη καταγράφηκε. Σταματάμε ώστε το last_update να μείνει στο
             # τελευταίο επιτυχές batch και η επόμενη ενημέρωση να συνεχίσει από εκεί.
+            completed = False
             break
         except Exception as err:
             _LOGGER.error(
@@ -278,6 +300,7 @@ async def batch_fetch(
                 batch_end.strftime("%d/%m/%Y"),
                 err,
             )
+            completed = False
             break
         current_start = batch_end + timedelta(days=1)
 
@@ -302,6 +325,7 @@ async def batch_fetch(
             supply,
             context_label,
         )
+    return completed
 
 
 async def fetch_since(
@@ -387,24 +411,25 @@ async def fetch_since(
         # Ήδη καταγράφηκε· δεν αποθηκεύεται τίποτα,
         # ξαναδοκιμάζεται στην επόμενη ενημέρωση.
         return
-    except Exception:
+    except Exception as err:
         _LOGGER.error(
-            "Παροχή %s: <%s> Σφάλμα κατά τη λήψη δεδομένων από ΔΕΔΔΗΕ (API).",
+            "Παροχή %s: <%s> Σφάλμα κατά τη λήψη δεδομένων από ΔΕΔΔΗΕ (API): %s",
             supply,
             context_label,
+            err,
         )
-
-
-_BACKFILL_CHECK_DAYS = 7
 
 
 async def async_ensure_external_statistics(
     hass, token, supply, tax, initial_time, has_pv: bool
 ):
     """
-    Γεμίζει το εξωτερικό statistic από το initial_time όταν η πρώτη εβδομάδα
-    του είναι κενή (πρώτη εκκίνηση μετά την αναβάθμιση ή ημιτελής
-    προηγούμενη λήψη). Η επανεισαγωγή είναι ασφαλής (rebase).
+    Γεμίζει το εξωτερικό statistic από το initial_time μέχρι να ολοκληρωθεί
+    μία πλήρης λήψη χωρίς σφάλμα (πρώτη εκκίνηση μετά την αναβάθμιση ή
+    ημιτελής προηγούμενη λήψη), ή όταν το statistic δεν έχει καμία εγγραφή
+    (π.χ. διαγράφηκε). Δεν εξαρτάται από το πότε ξεκινούν τα δεδομένα του
+    ΔΕΔΔΗΕ, άρα δεν επαναλαμβάνεται σε κάθε εκκίνηση όταν το initial_time
+    είναι παλαιότερο από τα δεδομένα. Η επανεισαγωγή είναι ασφαλής (rebase).
     """
     types = [(ATTR_CONSUMPTION, "consumption")]
     if has_pv:
@@ -412,12 +437,9 @@ async def async_ensure_external_statistics(
     for class_type, type_key in types:
         statistic_id = external_statistic_id(type_key, supply)
         try:
-            has_first_week = await async_has_rows(
-                hass,
-                statistic_id,
-                initial_time,
-                initial_time + timedelta(days=_BACKFILL_CHECK_DAYS),
-            )
+            done = await load_backfill_done(hass, supply, key=class_type)
+            if done and await async_has_any_rows(hass, statistic_id):
+                continue
         except Exception as err:
             _LOGGER.error(
                 "Παροχή %s: Αδυναμία ελέγχου του %s (%s). "
@@ -427,15 +449,14 @@ async def async_ensure_external_statistics(
                 err,
             )
             continue
-        if has_first_week:
-            continue
         _LOGGER.info(
-            "Παροχή %s: Το %s δεν έχει δεδομένα από %s. Έναρξη πλήρους λήψης.",
+            "Παροχή %s: Το %s δεν έχει ολοκληρωμένη λήψη από %s. "
+            "Έναρξη πλήρους λήψης.",
             supply,
             statistic_id,
             initial_time.strftime("%d/%m/%Y"),
         )
-        await batch_fetch(
+        if await batch_fetch(
             hass,
             token,
             supply,
@@ -444,4 +465,5 @@ async def async_ensure_external_statistics(
             dt_util.now(),
             "Μετάβαση σε εξωτερικά στατιστικά",
             class_type,
-        )
+        ):
+            await save_backfill_done(hass, supply, key=class_type)

@@ -35,6 +35,7 @@ class FakeRecorder:
         # the queue runs (and during startup it only runs once HA has started).
         self.deferred = False
         self.queue: list = []
+        self.queries: list = []  # (start, end) of every statistics_during_period
 
     async def async_add_executor_job(self, func, *args):
         if self.fail:
@@ -43,8 +44,15 @@ class FakeRecorder:
 
     def statistics_during_period(self, hass, start, end, ids, period, units, types):
         (sid,) = ids
+        self.queries.append((start, end))
         keys = sorted(k for k in self.rows if k >= start and (end is None or k < end))
         return {sid: [{"start": k, "sum": self.rows[k]} for k in keys]} if keys else {}
+
+    def get_last_statistics(self, hass, number, sid, convert_units, types):
+        if not self.rows:
+            return {}
+        last = max(self.rows)
+        return {sid: [{"start": last, "sum": self.rows[last]}]}
 
     def add_external(self, hass, metadata, stats):
         self.written.append((metadata, list(stats)))
@@ -67,12 +75,29 @@ def recorder(monkeypatch):
     monkeypatch.setattr(ext, "_PENDING", {})
     monkeypatch.setattr(ext, "get_instance", lambda hass: rec)
     monkeypatch.setattr(ext, "statistics_during_period", rec.statistics_during_period)
+    monkeypatch.setattr(ext, "get_last_statistics", rec.get_last_statistics)
     monkeypatch.setattr(ext, "async_add_external_statistics", rec.add_external)
     monkeypatch.setattr(utils, "async_add_external_statistics", rec.add_external)
     monkeypatch.setattr(ext, "StatisticData", dict)
     monkeypatch.setattr(utils, "StatisticData", dict)
     monkeypatch.setattr(ext, "StatisticMetaData", dict)
     return rec
+
+
+@pytest.fixture
+def marker(monkeypatch):
+    """In-memory backfill-done marker: {(supply, key)}."""
+    done: set = set()
+
+    async def load(hass, supply, key=ATTR_CONSUMPTION):
+        return (supply, key) in done
+
+    async def save(hass, supply, key=ATTR_CONSUMPTION):
+        done.add((supply, key))
+
+    monkeypatch.setattr(utils, "load_backfill_done", load)
+    monkeypatch.setattr(utils, "save_backfill_done", save)
+    return done
 
 
 def test_external_statistic_id():
@@ -180,19 +205,15 @@ async def test_warns_when_rows_exist_after_import(recorder, caplog):
 
 
 @pytest.mark.asyncio
-async def test_has_rows(recorder):
+async def test_has_any_rows(recorder):
+    assert not await ext.async_has_any_rows(MagicMock(), STAT_ID)
     recorder.rows[datetime(2026, 1, 2)] = 1.0
-    assert await ext.async_has_rows(
-        MagicMock(), STAT_ID, datetime(2026, 1, 1), datetime(2026, 1, 8)
-    )
-    assert not await ext.async_has_rows(
-        MagicMock(), STAT_ID, datetime(2026, 2, 1), datetime(2026, 2, 8)
-    )
+    assert await ext.async_has_any_rows(MagicMock(), STAT_ID)
 
 
 @pytest.mark.asyncio
-async def test_backfill_runs_when_statistic_empty(monkeypatch, recorder):
-    bf = AsyncMock()
+async def test_backfill_runs_when_statistic_empty(monkeypatch, recorder, marker):
+    bf = AsyncMock(return_value=True)
     monkeypatch.setattr(utils, "batch_fetch", bf)
     start = datetime(2025, 4, 15)
     await utils.async_ensure_external_statistics(
@@ -201,13 +222,55 @@ async def test_backfill_runs_when_statistic_empty(monkeypatch, recorder):
     bf.assert_awaited_once()
     args = bf.await_args.args
     assert args[4] == start and args[-1] == ATTR_CONSUMPTION
+    assert (SUPPLY, ATTR_CONSUMPTION) in marker
 
 
 @pytest.mark.asyncio
-async def test_backfill_runs_again_when_first_week_empty(monkeypatch, recorder):
+async def test_backfill_skipped_once_done_although_data_starts_late(
+    monkeypatch, recorder, marker
+):
+    """Data that starts long after initial_time must not refill on every start."""
+    recorder.rows[datetime(2025, 10, 13)] = 10.0  # first week of initial_time empty
+    marker.add((SUPPLY, ATTR_CONSUMPTION))
+    bf = AsyncMock(return_value=True)
+    monkeypatch.setattr(utils, "batch_fetch", bf)
+    await utils.async_ensure_external_statistics(
+        MagicMock(), "tok", SUPPLY, "tax", datetime(2024, 4, 14), has_pv=False
+    )
+    bf.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_backfill_runs_until_completed(monkeypatch, recorder, marker):
     """A failed earlier backfill left only recent rows: refill from initial_time."""
     recorder.rows[datetime(2026, 11, 1)] = 10.0
-    bf = AsyncMock()
+    bf = AsyncMock(return_value=True)
+    monkeypatch.setattr(utils, "batch_fetch", bf)
+    await utils.async_ensure_external_statistics(
+        MagicMock(), "tok", SUPPLY, "tax", datetime(2025, 4, 15), has_pv=False
+    )
+    bf.assert_awaited_once()
+    assert (SUPPLY, ATTR_CONSUMPTION) in marker
+
+
+@pytest.mark.asyncio
+async def test_incomplete_backfill_is_not_marked(monkeypatch, recorder, marker):
+    bf = AsyncMock(return_value=False)
+    monkeypatch.setattr(utils, "batch_fetch", bf)
+    await utils.async_ensure_external_statistics(
+        MagicMock(), "tok", SUPPLY, "tax", datetime(2025, 4, 15), has_pv=False
+    )
+    bf.assert_awaited_once()
+    assert marker == set()
+
+
+@pytest.mark.asyncio
+async def test_backfill_reruns_when_statistic_was_emptied(
+    monkeypatch, recorder, marker
+):
+    """Marked done, but the statistic has no rows (e.g. deleted by the user)."""
+    marker.add((SUPPLY, ATTR_CONSUMPTION))
+    bf = AsyncMock(return_value=True)
     monkeypatch.setattr(utils, "batch_fetch", bf)
     await utils.async_ensure_external_statistics(
         MagicMock(), "tok", SUPPLY, "tax", datetime(2025, 4, 15), has_pv=False
@@ -216,25 +279,30 @@ async def test_backfill_runs_again_when_first_week_empty(monkeypatch, recorder):
 
 
 @pytest.mark.asyncio
-async def test_backfill_skipped_when_first_week_present(monkeypatch, recorder):
-    recorder.rows[datetime(2025, 4, 16)] = 1.0
-    bf = AsyncMock()
-    monkeypatch.setattr(utils, "batch_fetch", bf)
-    await utils.async_ensure_external_statistics(
-        MagicMock(), "tok", SUPPLY, "tax", datetime(2025, 4, 15), has_pv=False
-    )
-    bf.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_backfill_covers_pv_types(monkeypatch, recorder):
-    bf = AsyncMock()
+async def test_backfill_covers_pv_types(monkeypatch, recorder, marker):
+    bf = AsyncMock(return_value=True)
     monkeypatch.setattr(utils, "batch_fetch", bf)
     await utils.async_ensure_external_statistics(
         MagicMock(), "tok", SUPPLY, "tax", datetime(2025, 4, 15), has_pv=True
     )
     types = [c.args[-1] for c in bf.await_args_list]
     assert types == [ATTR_CONSUMPTION, ATTR_PRODUCTION, ATTR_INJECTION]
+    assert marker == {
+        (SUPPLY, ATTR_CONSUMPTION),
+        (SUPPLY, ATTR_PRODUCTION),
+        (SUPPLY, ATTR_INJECTION),
+    }
+
+
+@pytest.mark.asyncio
+async def test_initial_batches_mark_completed_backfills(monkeypatch, marker):
+    """A fresh install's full fetch counts as the backfill: no second download."""
+    bf = AsyncMock(side_effect=[True, True, False])
+    monkeypatch.setattr(utils, "batch_fetch", bf)
+    await utils.run_initial_batches(
+        MagicMock(), "tok", SUPPLY, "tax", datetime(2025, 4, 15), True, inc_con=True
+    )
+    assert marker == {(SUPPLY, ATTR_CONSUMPTION), (SUPPLY, ATTR_PRODUCTION)}
 
 
 def _starting_hass():
@@ -295,7 +363,7 @@ async def test_batch_fetch_stops_after_failed_batch(monkeypatch):
     monkeypatch.setattr(utils, "load_last_total", AsyncMock(return_value=0.0))
     monkeypatch.setattr(utils, "save_last_update", save_update)
     monkeypatch.setattr(utils, "save_last_total", save_total)
-    await utils.batch_fetch(
+    completed = await utils.batch_fetch(
         MagicMock(),
         "tok",
         SUPPLY,
@@ -305,6 +373,7 @@ async def test_batch_fetch_stops_after_failed_batch(monkeypatch):
         "CTX",
         ATTR_CONSUMPTION,
     )
+    assert completed is False
     assert api.await_count == 2
     save_update.assert_awaited_once()
     assert save_update.await_args.args[2] == good_dt
@@ -324,7 +393,7 @@ async def test_batch_fetch_stops_on_statistics_read_error(monkeypatch):
     monkeypatch.setattr(utils, "load_last_total", AsyncMock(return_value=0.0))
     monkeypatch.setattr(utils, "save_last_update", AsyncMock())
     monkeypatch.setattr(utils, "save_last_total", AsyncMock())
-    await utils.batch_fetch(
+    completed = await utils.batch_fetch(
         MagicMock(),
         "tok",
         SUPPLY,
@@ -334,6 +403,7 @@ async def test_batch_fetch_stops_on_statistics_read_error(monkeypatch):
         "CTX",
         ATTR_CONSUMPTION,
     )
+    assert completed is False
     assert api.await_count == 2
 
 
@@ -362,8 +432,9 @@ async def test_fetch_since_statistics_read_error_saves_nothing(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_ensure_survives_db_error(monkeypatch, recorder, caplog):
+async def test_ensure_survives_db_error(monkeypatch, recorder, marker, caplog):
     """A transient DB error must not fail the config entry; retry next start."""
+    marker.add((SUPPLY, ATTR_CONSUMPTION))  # done, so the row check reads the DB
     recorder.fail = True
     bf = AsyncMock()
     monkeypatch.setattr(utils, "batch_fetch", bf)
@@ -373,3 +444,103 @@ async def test_ensure_survives_db_error(monkeypatch, recorder, caplog):
         )
     bf.assert_not_awaited()
     assert "database is locked" in caplog.text
+
+
+def _batch_mocks(monkeypatch, api):
+    pi = AsyncMock(return_value=(24, 24.0, datetime(2025, 6, 1)))
+    monkeypatch.setattr(utils, "get_data_from_api", api)
+    monkeypatch.setattr(utils, "process_and_insert", pi)
+    monkeypatch.setattr(utils, "load_last_total", AsyncMock(return_value=0.0))
+    monkeypatch.setattr(utils, "save_last_update", AsyncMock())
+    monkeypatch.setattr(utils, "save_last_total", AsyncMock())
+    return pi
+
+
+@pytest.mark.asyncio
+async def test_batch_fetch_completes_and_warns_only_after_last_batch(monkeypatch):
+    """Earlier batches' 'later rows' are rewritten by the next batch: no warning."""
+    pi = _batch_mocks(monkeypatch, AsyncMock(return_value=["rec"]))
+    completed = await utils.batch_fetch(
+        MagicMock(),
+        "tok",
+        SUPPLY,
+        "tax",
+        datetime(2024, 1, 1),
+        datetime(2026, 11, 1),
+        "CTX",
+        ATTR_CONSUMPTION,
+    )
+    assert completed is True
+    assert [c.kwargs["warn_later"] for c in pi.await_args_list] == [
+        False,
+        False,
+        True,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_batch_fetch_without_any_records_still_completes(monkeypatch):
+    """No data at all is a finished backfill, not a failure to retry forever."""
+    _batch_mocks(monkeypatch, AsyncMock(return_value=[]))
+    assert (
+        await utils.batch_fetch(
+            MagicMock(),
+            "tok",
+            SUPPLY,
+            "tax",
+            datetime(2024, 1, 1),
+            datetime(2026, 11, 1),
+            "CTX",
+            ATTR_CONSUMPTION,
+        )
+        is True
+    )
+
+
+@pytest.mark.asyncio
+async def test_no_warning_when_later_rows_are_expected(recorder, caplog):
+    recorder.rows[datetime(2026, 11, 1)] = 9999.0
+    with caplog.at_level(logging.WARNING, logger="deddie_metering"):
+        await process_and_insert(
+            MagicMock(),
+            _day_records(datetime(2026, 10, 1)),
+            SUPPLY,
+            0.0,
+            "consumption",
+            warn_later=False,
+        )
+    assert "μεταγενέστερες εγγραφές" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_fetch_since_error_names_the_cause(monkeypatch, caplog):
+    monkeypatch.setattr(
+        utils,
+        "get_data_from_api",
+        AsyncMock(side_effect=RuntimeError("Cannot connect to host apps.deddie.gr")),
+    )
+    with caplog.at_level(logging.ERROR, logger="deddie_metering"):
+        await utils.fetch_since(
+            MagicMock(),
+            "tok",
+            SUPPLY,
+            "tax",
+            datetime(2026, 11, 1),
+            datetime(2026, 11, 5),
+            "CTX",
+            ATTR_CONSUMPTION,
+        )
+    assert "Cannot connect to host apps.deddie.gr" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_short_gap_does_not_read_whole_history(recorder):
+    """A 2-day gap is found by a widening look-back, not a full-history read."""
+    day = datetime(2026, 11, 10)
+    recorder.rows[day - timedelta(days=2)] = 70.0
+    _, total, _ = await process_and_insert(
+        MagicMock(), _day_records(day), SUPPLY, 0.0, "consumption"
+    )
+    assert recorder.rows[day] == pytest.approx(71.0)
+    base_reads = [q for q in recorder.queries if q[1] == day]
+    assert min(start for start, _ in base_reads) == day - timedelta(days=31)
