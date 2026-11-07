@@ -544,3 +544,17 @@ async def test_short_gap_does_not_read_whole_history(recorder):
     assert recorder.rows[day] == pytest.approx(71.0)
     base_reads = [q for q in recorder.queries if q[1] == day]
     assert min(start for start, _ in base_reads) == day - timedelta(days=31)
+
+
+@pytest.mark.asyncio
+async def test_running_sum_has_no_float_noise(recorder):
+    """0.1 kWh added 24 times gives 2.4, not 2.4000000000000004."""
+    day = datetime(2026, 11, 1)
+    recorder.rows[day - timedelta(hours=1)] = 723.449
+    _, total, _ = await process_and_insert(
+        MagicMock(), _day_records(day, 0.1), SUPPLY, 0.0, "consumption"
+    )
+    sums = [recorder.rows[day + timedelta(hours=h)] for h in range(24)]
+    assert sums == [round(723.449 + 0.1 * (h + 1), 6) for h in range(24)]
+    assert all(repr(s) == repr(round(s, 6)) for s in sums)
+    assert total == 725.849

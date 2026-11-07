@@ -118,7 +118,10 @@ async def process_and_insert(
         stats = []
         queued = {}
         for start_dt, kwh in hourly:
-            running += kwh
+            # Στρογγυλοποίηση σε 6 δεκαδικά: αφαιρεί τα υπολείμματα float
+            # (π.χ. 723.4490000000003) χωρίς να αλλάζει πραγματικές τιμές,
+            # αφού οι τιμές του ΔΕΔΔΗΕ έχουν λιγότερα δεκαδικά (συνήθως 3).
+            running = round(running + kwh, 6)
             stats.append(StatisticData(start=start_dt, state=running, sum=running))
             queued[start_dt] = running
         async_add_external_statistics(hass, external_metadata(type_key, supply), stats)
