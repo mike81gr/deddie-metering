@@ -207,7 +207,6 @@ class DeddieDataUpdateCoordinator(DataUpdateCoordinator):
                 last,
                 now,
                 label,
-                60,
                 ATTR_CONSUMPTION,
             )
         else:
@@ -225,7 +224,6 @@ class DeddieDataUpdateCoordinator(DataUpdateCoordinator):
                 last,
                 now,
                 label,
-                60,
                 ATTR_CONSUMPTION,
             )
 
@@ -257,7 +255,6 @@ class DeddieDataUpdateCoordinator(DataUpdateCoordinator):
                 last,
                 now,
                 label,
-                60,
                 ATTR_PRODUCTION,
             )
         else:
@@ -275,7 +272,6 @@ class DeddieDataUpdateCoordinator(DataUpdateCoordinator):
                 last,
                 now,
                 label,
-                60,
                 ATTR_PRODUCTION,
             )
 
@@ -300,7 +296,6 @@ class DeddieDataUpdateCoordinator(DataUpdateCoordinator):
                 last,
                 now,
                 label,
-                60,
                 ATTR_INJECTION,
             )
         else:
@@ -318,7 +313,6 @@ class DeddieDataUpdateCoordinator(DataUpdateCoordinator):
                 last,
                 now,
                 label,
-                60,
                 ATTR_INJECTION,
             )
 

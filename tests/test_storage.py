@@ -89,3 +89,14 @@ async def test_save_and_load_initial_jump_flag(dummy_storage, hass):
     assert result is True
     result2 = await storage_mod.load_initial_jump_flag(hass, supply, key="injected")
     assert result2 is False
+
+
+@pytest.mark.asyncio
+async def test_backfill_done_flag(dummy_storage, hass):
+    supply = "123456789"
+    assert await storage_mod.load_backfill_done(hass, supply) is False
+    await storage_mod.save_backfill_done(hass, supply, key="active")
+    assert await storage_mod.load_backfill_done(hass, supply, key="active") is True
+    assert await storage_mod.load_backfill_done(hass, supply, key="produced") is False
+    key = f"{storage_mod.DOMAIN}_external_backfill.json"
+    assert dummy_storage[key] == {f"backfill_active_{supply}": True}
